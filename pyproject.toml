@@ -1,0 +1,27 @@
+[project]
+name = "multi-agent-research-assistant"
+version = "1.0.0"
+description = "Multi-Agent AI Research Assistant"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = []
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --cov=app"
+testpaths = [
+    "tests",
+]
+asyncio_mode = "auto"
