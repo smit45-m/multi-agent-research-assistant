@@ -27,7 +27,7 @@ const getIcon = (type: string) => {
 
 const getStatusColor = (status: string) => {
   switch (status) {
-    case 'running': return 'var(--accent-cyan)';
+    case 'running': return 'var(--brand-primary)';
     case 'done': return 'var(--accent-emerald)';
     default: return 'var(--text-tertiary)';
   }
@@ -41,25 +41,25 @@ export const AgentNode: React.FC<{ data: AgentNodeData }> = ({ data }) => {
   return (
     <div
       style={{
-        background: 'rgba(15, 18, 28, 0.92)',
+        background: 'rgba(34, 33, 32, 0.94)',
         backdropFilter: 'blur(16px)',
         WebkitBackdropFilter: 'blur(16px)',
-        border: `1.5px solid ${isRunning ? 'var(--accent-cyan)' : isDone ? 'rgba(16, 185, 129, 0.45)' : 'rgba(255, 255, 255, 0.1)'}`,
-        borderRadius: '14px',
+        border: `1.5px solid ${isRunning ? 'var(--brand-primary)' : isDone ? 'rgba(45, 122, 88, 0.55)' : 'rgba(255, 255, 255, 0.1)'}`,
+        borderRadius: '12px',
         padding: '1rem 1.25rem',
         minWidth: '240px',
         maxWidth: '280px',
         boxShadow: isRunning
-          ? '0 0 25px rgba(6, 182, 212, 0.3), 0 10px 30px rgba(0, 0, 0, 0.5)'
+          ? '0 0 25px rgba(204, 120, 92, 0.35), 0 10px 30px rgba(0, 0, 0, 0.5)'
           : isDone
-          ? '0 0 20px rgba(16, 185, 129, 0.18), 0 8px 24px rgba(0, 0, 0, 0.4)'
+          ? '0 0 20px rgba(45, 122, 88, 0.2), 0 8px 24px rgba(0, 0, 0, 0.4)'
           : '0 8px 24px rgba(0, 0, 0, 0.35)',
         transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
         position: 'relative',
-        color: '#f8fafc',
+        color: 'var(--text-primary)',
       }}
     >
-      <Handle type="target" position={Position.Left} style={{ background: getStatusColor(status), width: 10, height: 10, border: '2px solid #090a0f' }} />
+      <Handle type="target" position={Position.Left} style={{ background: getStatusColor(status), width: 10, height: 10, border: '2px solid #141413' }} />
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.45rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
@@ -69,12 +69,12 @@ export const AgentNode: React.FC<{ data: AgentNodeData }> = ({ data }) => {
               height: 32,
               borderRadius: 8,
               background: isRunning
-                ? 'rgba(6, 182, 212, 0.18)'
+                ? 'rgba(204, 120, 92, 0.2)'
                 : isDone
-                ? 'rgba(16, 185, 129, 0.18)'
-                : 'rgba(99, 102, 241, 0.15)',
+                ? 'rgba(45, 122, 88, 0.2)'
+                : 'rgba(204, 120, 92, 0.12)',
               color: isRunning
-                ? 'var(--accent-cyan)'
+                ? 'var(--brand-primary)'
                 : isDone
                 ? 'var(--accent-emerald)'
                 : 'var(--brand-primary)',
@@ -86,7 +86,7 @@ export const AgentNode: React.FC<{ data: AgentNodeData }> = ({ data }) => {
             {getIcon(iconType)}
           </div>
           <div>
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '-0.01em' }}>{title}</div>
+            <div style={{ fontSize: '0.88rem', fontWeight: 600, letterSpacing: '-0.01em' }}>{title}</div>
           </div>
         </div>
 
@@ -97,8 +97,8 @@ export const AgentNode: React.FC<{ data: AgentNodeData }> = ({ data }) => {
             textTransform: 'uppercase',
             padding: '0.15rem 0.5rem',
             borderRadius: '999px',
-            background: isRunning ? 'rgba(6, 182, 212, 0.2)' : isDone ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.06)',
-            color: isRunning ? 'var(--accent-cyan)' : isDone ? 'var(--accent-emerald)' : 'var(--text-tertiary)',
+            background: isRunning ? 'rgba(204, 120, 92, 0.2)' : isDone ? 'rgba(45, 122, 88, 0.2)' : 'rgba(255, 255, 255, 0.06)',
+            color: isRunning ? 'var(--brand-primary)' : isDone ? 'var(--accent-emerald)' : 'var(--text-tertiary)',
             display: 'inline-flex',
             alignItems: 'center',
             gap: '0.25rem',

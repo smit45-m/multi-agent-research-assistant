@@ -1,32 +1,35 @@
-/* Senior-Engineer Design System (Linear / Raycast inspired) */
+/* Anthropic Research Design System (Ivory / Terracotta / Slate / Editorial Serif) */
 :root {
-  --bg-base: #090a0f;
-  --bg-subtle: #0f1118;
-  --bg-surface: #141722;
-  --bg-surface-elevated: #1a1e2d;
-  --bg-surface-hover: #22273a;
+  --bg-base: #141413;
+  --bg-subtle: #1b1a19;
+  --bg-surface: #222120;
+  --bg-surface-elevated: #282725;
+  --bg-surface-hover: #32302e;
   
-  --border-subtle: rgba(255, 255, 255, 0.07);
-  --border-default: rgba(255, 255, 255, 0.12);
-  --border-focus: rgba(99, 102, 241, 0.55);
-  --border-glow: rgba(99, 102, 241, 0.25);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-default: rgba(255, 255, 255, 0.14);
+  --border-focus: rgba(204, 120, 92, 0.65);
+  --border-glow: rgba(204, 120, 92, 0.25);
   
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-tertiary: #64748b;
-  --text-inverted: #090a0f;
+  --text-primary: #f5f4ef;
+  --text-secondary: #a3a099;
+  --text-tertiary: #787570;
+  --text-inverted: #141413;
   
-  --brand-primary: #6366f1;
-  --brand-primary-hover: #4f46e5;
-  --brand-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #06b6d4 100%);
+  /* Anthropic Signature Terracotta Coral */
+  --brand-primary: #cc785c;
+  --brand-primary-hover: #b8684d;
+  --brand-primary-subtle: rgba(204, 120, 92, 0.14);
+  --brand-gradient: linear-gradient(135deg, #cc785c 0%, #d4a276 50%, #e8b288 100%);
   
-  --accent-emerald: #10b981;
-  --accent-emerald-bg: rgba(16, 185, 129, 0.1);
-  --accent-cyan: #06b6d4;
-  --accent-cyan-bg: rgba(6, 182, 212, 0.1);
-  --accent-amber: #f59e0b;
-  --accent-rose: #f43f5e;
+  --accent-emerald: #2d7a58;
+  --accent-emerald-bg: rgba(45, 122, 88, 0.14);
+  --accent-cyan: #4a9e99;
+  --accent-cyan-bg: rgba(74, 158, 153, 0.14);
+  --accent-amber: #d9822b;
+  --accent-rose: #d15656;
   
+  --font-serif: 'Newsreader', 'Lora', Georgia, serif;
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
   
@@ -36,9 +39,9 @@
   --radius-xl: 20px;
   --radius-full: 9999px;
   
-  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-card: 0 8px 24px -4px rgba(0, 0, 0, 0.4), 0 2px 6px -1px rgba(0, 0, 0, 0.2);
-  --shadow-glow: 0 0 35px rgba(99, 102, 241, 0.18);
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-card: 0 8px 24px -4px rgba(0, 0, 0, 0.45), 0 2px 6px -1px rgba(0, 0, 0, 0.25);
+  --shadow-glow: 0 0 35px rgba(204, 120, 92, 0.22);
   
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --transition-fast: 0.15s var(--ease-out);
@@ -46,25 +49,25 @@
 }
 
 [data-theme="light"] {
-  --bg-base: #f8fafc;
-  --bg-subtle: #f1f5f9;
+  --bg-base: #faf9f5;
+  --bg-subtle: #f2efe9;
   --bg-surface: #ffffff;
   --bg-surface-elevated: #ffffff;
-  --bg-surface-hover: #f1f5f9;
+  --bg-surface-hover: #ebe7df;
   
-  --border-subtle: rgba(0, 0, 0, 0.06);
-  --border-default: rgba(0, 0, 0, 0.11);
-  --border-focus: rgba(99, 102, 241, 0.65);
-  --border-glow: rgba(99, 102, 241, 0.12);
+  --border-subtle: rgba(0, 0, 0, 0.07);
+  --border-default: rgba(0, 0, 0, 0.13);
+  --border-focus: rgba(204, 120, 92, 0.75);
+  --border-glow: rgba(204, 120, 92, 0.15);
   
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-tertiary: #94a3b8;
-  --text-inverted: #ffffff;
+  --text-primary: #191918;
+  --text-secondary: #5e5b56;
+  --text-tertiary: #8c8881;
+  --text-inverted: #faf9f5;
   
-  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-card: 0 8px 24px -4px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
-  --shadow-glow: 0 0 30px rgba(99, 102, 241, 0.08);
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-card: 0 8px 24px -4px rgba(0, 0, 0, 0.07), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+  --shadow-glow: 0 0 30px rgba(204, 120, 92, 0.12);
 }
 
 *, *::before, *::after {
@@ -234,14 +237,45 @@ nav.navbar {
   background: var(--bg-surface-hover);
 }
 
-/* Container */
-.container {
-  max-width: 1320px;
-  margin: 0 auto;
-  padding: 2rem;
-  width: 100%;
-  position: relative;
-  z-index: 1;
+/* Anthropic Editorial Hero */
+.anthropic-hero {
+  margin-top: 1.25rem;
+  margin-bottom: 2.5rem;
+  max-width: 960px;
+}
+
+.hero-kicker {
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--brand-primary);
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.hero-headline {
+  font-family: var(--font-serif);
+  font-size: 2.85rem;
+  font-weight: 400;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+  margin-bottom: 1.1rem;
+}
+
+@media (max-width: 768px) {
+  .hero-headline {
+    font-size: 2rem;
+  }
+}
+
+.hero-subtext {
+  font-family: var(--font-sans);
+  font-size: 1.05rem;
+  line-height: 1.62;
+  color: var(--text-secondary);
+  max-width: 820px;
 }
 
 /* Telemetry Strip */

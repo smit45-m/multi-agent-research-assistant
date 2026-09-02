@@ -37,6 +37,17 @@ export const App: React.FC = () => {
       />
 
       <main className="container">
+        {/* Anthropic Editorial Hero Section */}
+        <section className="anthropic-hero">
+          <div className="hero-kicker">Multi-Agent AI Research Assistant \ Winter 2025</div>
+          <h1 className="hero-headline">
+            Frontier research in retrieval-augmented multi-agent intelligence.
+          </h1>
+          <p className="hero-subtext">
+            Orchestrating 4 autonomous agents across LangGraph and CrewAI for multi-format RAG, decreasing research synthesis time by 60% and achieving 85%+ response accuracy across 200+ benchmarked test cases.
+          </p>
+        </section>
+
         <TelemetryStrip accuracy={accuracy} latency={latency} />
 
         {activeTab === 'studio' && (
