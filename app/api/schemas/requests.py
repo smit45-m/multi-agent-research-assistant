@@ -17,9 +17,9 @@ class ResearchQuery(BaseModel):
         'standard', 
         description="Depth of research synthesis and multi-step decomposition."
     )
-    rag_mode: Literal['hybrid', 'vector', 'bm25', 'rrf', 'multi_query'] = Field(
+    rag_mode: Literal['hybrid', 'agentic', 'vectorless', 'hierarchical', 'vector', 'bm25', 'rrf', 'multi_query'] = Field(
         'hybrid',
-        description="RAG retrieval strategy: Hybrid (Dense+BM25+RRF), Dense Vector, BM25, or Multi-Query."
+        description="RAG retrieval strategy: Hybrid (Dense+BM25+RRF), Agentic (CRAG/Self-RAG), Vectorless (Graph+BM25), Hierarchical, or Multi-Query."
     )
     orchestrator: Literal['langgraph', 'crewai'] = Field(
         'langgraph',

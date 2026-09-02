@@ -4,7 +4,8 @@ Advanced Hybrid Retrieval module combining:
 2. Sparse Keyword Retrieval (BM25)
 3. Reciprocal Rank Fusion (RRF)
 4. Multi-Query Expansion
-5. Contextual Reranking & Compression
+5. Vectorless Knowledge Graph Retrieval
+6. Agentic Corrective RAG (CRAG & Self-RAG)
 """
 import math
 import re
@@ -100,28 +101,48 @@ class BM25Retriever:
 
 class HybridRetriever:
     """
-    Production-grade Hybrid Retriever implementing:
+    Production-grade Multi-Paradigmatic Retriever implementing:
     - Dense Vector similarity (FAISS)
     - Sparse Lexical matching (BM25)
     - Reciprocal Rank Fusion (RRF)
     - Multi-Query Expansion
+    - Vectorless Knowledge Graph RAG
+    - Agentic Corrective RAG (CRAG) & Self-RAG
     """
     def __init__(self, vector_store: VectorStoreManager, rrf_k: int = 60):
         self.vector_store = vector_store
         self.rrf_k = rrf_k
         self.bm25 = BM25Retriever()
         self._synced_doc_count = -1
+        self._vectorless_rag: Optional[Any] = None
+        self._agentic_rag: Optional[Any] = None
+
+    def _get_vectorless_rag(self) -> Any:
+        if self._vectorless_rag is None:
+            from app.rag.advanced_rag import VectorlessRAG
+            self._vectorless_rag = VectorlessRAG()
+            broad_docs = self.vector_store.similarity_search("", k=max(self.vector_store.get_document_count(), 50))
+            if broad_docs:
+                self._vectorless_rag.fit(broad_docs)
+        return self._vectorless_rag
+
+    def _get_agentic_rag(self) -> Any:
+        if self._agentic_rag is None:
+            from app.rag.advanced_rag import AgenticRAG
+            self._agentic_rag = AgenticRAG(self, self._get_vectorless_rag())
+        return self._agentic_rag
 
     def sync_bm25(self) -> None:
         """Syncs in-memory BM25 index with current vector store contents."""
         total = self.vector_store.get_document_count()
         if total != self._synced_doc_count:
-            # Query broad documents to populate BM25 corpus
             broad_docs = self.vector_store.similarity_search("", k=max(total, 50))
             if broad_docs:
                 self.bm25.fit(broad_docs)
                 self._synced_doc_count = total
-                logger.info(f"BM25 index synced with {len(broad_docs)} documents.")
+                if self._vectorless_rag is not None:
+                    self._vectorless_rag.fit(broad_docs)
+                logger.info(f"BM25 and Vectorless indexes synced with {len(broad_docs)} documents.")
 
     def generate_multi_queries(self, query: str) -> List[str]:
         """
@@ -130,7 +151,6 @@ class HybridRetriever:
         clean_q = query.strip()
         queries = [clean_q]
         
-        # Domain-aware rule-based expansion
         if "vs" in clean_q.lower() or "compare" in clean_q.lower() or "difference" in clean_q.lower():
             queries.append(f"advantages disadvantages comparison {clean_q}")
             queries.append(f"technical benchmarks performance {clean_q}")
@@ -158,13 +178,11 @@ class HybridRetriever:
 
         for ranked_list in ranked_lists:
             for rank, doc in enumerate(ranked_list, start=1):
-                # Unique key by source and prefix
                 doc_key = f"{doc.metadata.get('source_path', doc.metadata.get('source', 'unknown'))}:{doc.page_content[:150]}"
                 rrf_scores[doc_key] += 1.0 / (self.rrf_k + rank)
                 if doc_key not in doc_map:
                     doc_map[doc_key] = doc
 
-        # Sort by composite RRF score descending
         sorted_keys = sorted(rrf_scores.keys(), key=lambda k: rrf_scores[k], reverse=True)
         fused_docs = []
         for key in sorted_keys[:top_k]:
@@ -186,20 +204,50 @@ class HybridRetriever:
     ) -> List[Document]:
         """
         Executes retrieval according to the chosen RAG mode:
-        - 'vector': FAISS similarity search only
-        - 'bm25': BM25 keyword search only
-        - 'rrf' or 'hybrid': Combines Dense FAISS + Sparse BM25 via Reciprocal Rank Fusion
+        - 'agentic': Corrective RAG (CRAG) + Self-RAG grounding + Multi-hop reasoning
+        - 'vectorless': Zero-vector BM25 + Knowledge Graph entity traversal
+        - 'hierarchical': Multi-scale parent-child chunking for large document synthesis
+        - 'vector': Dense FAISS similarity search only
+        - 'bm25': Sparse lexical BM25 keyword search only
         - 'multi_query': Multi-query expansion + RRF across all sub-queries
+        - 'hybrid': Dense FAISS + Sparse BM25 fused via Reciprocal Rank Fusion (k=60)
         """
         self.sync_bm25()
         mode = mode.lower()
 
+        # 1. Agentic RAG
+        if mode == "agentic":
+            agentic_engine = self._get_agentic_rag()
+            docs, _ = agentic_engine.execute_agentic_rag(query, top_k=top_k)
+            return docs
+
+        # 2. Vectorless RAG
+        if mode == "vectorless":
+            vectorless_engine = self._get_vectorless_rag()
+            return vectorless_engine.search(query, top_k=top_k)
+
+        # 3. Hierarchical Parent-Child RAG
+        if mode == "hierarchical":
+            # Retrieve targeted child chunks then expand to parent context
+            child_results = self.bm25.search(query, top_k=top_k)
+            parent_ids = {d.metadata.get("parent_id") for d in child_results if "parent_id" in d.metadata}
+            if parent_ids:
+                # Fetch full parent chunks if indexed
+                broad_docs = self.vector_store.similarity_search("", k=max(self.vector_store.get_document_count(), 50))
+                parent_docs = [d for d in broad_docs if d.metadata.get("parent_id") in parent_ids]
+                if parent_docs:
+                    return parent_docs[:top_k]
+            return child_results[:top_k]
+
+        # 4. Dense Vector Only
         if mode == "vector":
             return self.vector_store.similarity_search(query, k=top_k)
 
+        # 5. Sparse BM25 Only
         if mode == "bm25":
             return self.bm25.search(query, top_k=top_k)
 
+        # 6. Multi-Query Expansion
         if mode == "multi_query":
             expanded_queries = self.generate_multi_queries(query)
             ranked_runs = []

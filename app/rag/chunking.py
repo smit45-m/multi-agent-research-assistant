@@ -1,5 +1,8 @@
 """
-Text splitting and chunking strategies.
+Text splitting and adaptive multi-scale chunking strategies.
+Supports:
+- Document-size adaptive chunking (Sentence-window, Semantic recursive, Parent-Child)
+- Recursive character splitting
 """
 from typing import List, Optional
 
@@ -17,13 +20,6 @@ def get_text_splitter(
 ) -> RecursiveCharacterTextSplitter:
     """
     Initializes and returns a RecursiveCharacterTextSplitter with configured sizes and separators.
-    
-    Args:
-        chunk_size (Optional[int]): Maximum size of chunks to return. Defaults to settings.CHUNK_SIZE.
-        chunk_overlap (Optional[int]): Overlap in characters between chunks. Defaults to settings.CHUNK_OVERLAP.
-        
-    Returns:
-        RecursiveCharacterTextSplitter: The configured text splitter instance.
     """
     settings = get_settings()
     
@@ -51,40 +47,36 @@ def get_text_splitter(
         length_function=len,
         is_separator_regex=False
     )
-    
-    logger.debug(f"Initialized RecursiveCharacterTextSplitter (chunk_size={c_size}, chunk_overlap={c_overlap})")
     return splitter
 
 def split_documents(
     documents: List[Document], 
     chunk_size: Optional[int] = None, 
-    chunk_overlap: Optional[int] = None
+    chunk_overlap: Optional[int] = None,
+    adaptive: bool = True
 ) -> List[Document]:
     """
     Splits a list of Documents into smaller chunked Documents.
-    
-    Args:
-        documents (List[Document]): The documents to split.
-        chunk_size (Optional[int]): Maximum size of chunks. Defaults to settings.CHUNK_SIZE.
-        chunk_overlap (Optional[int]): Overlap between chunks. Defaults to settings.CHUNK_OVERLAP.
-        
-    Returns:
-        List[Document]: The list of chunked Document objects.
+    If adaptive=True and chunk_size is not forced, applies Multi-Scale Adaptive Chunking:
+    - Small (<2KB): Sentence-window chunks
+    - Medium (2KB-20KB): Semantic recursive chunks
+    - Large (>20KB): Hierarchical Parent-Child chunks
     """
     if not documents:
-        logger.warning("No documents provided to split.")
         return []
-        
-    logger.info(f"Splitting {len(documents)} documents...")
-    
-    splitter = get_text_splitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    chunks = splitter.split_documents(documents)
-    
-    num_chunks = len(chunks)
-    if num_chunks > 0:
-        avg_size = sum(len(chunk.page_content) for chunk in chunks) / num_chunks
-        logger.info(f"Split completed: Generated {num_chunks} chunks with an average size of {avg_size:.2f} characters.")
-    else:
-        logger.warning("Splitting resulted in 0 chunks.")
-        
-    return chunks
+
+    if chunk_size is not None or not adaptive:
+        splitter = get_text_splitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        return splitter.split_documents(documents)
+
+    from app.rag.advanced_rag import AdaptiveChunker
+    all_chunks: List[Document] = []
+
+    for doc in documents:
+        parents, children = AdaptiveChunker.chunk_document(doc)
+        # Store child chunks (plus parent reference) for indexing
+        all_chunks.extend(children)
+
+    if all_chunks:
+        logger.info(f"Adaptive multi-scale splitting generated {len(all_chunks)} chunks across {len(documents)} documents.")
+    return all_chunks or documents

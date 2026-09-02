@@ -101,10 +101,13 @@ def create_app() -> FastAPI:
     app.include_router(research.router)
     app.include_router(documents.router)
 
-    # Serve static frontend files
+    # Serve static frontend files and SPA assets
     static_dir = Path(__file__).parent / "static"
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+        assets_dir = static_dir / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
     
     # Serve frontend index.html at root
     @app.get("/", include_in_schema=False)
