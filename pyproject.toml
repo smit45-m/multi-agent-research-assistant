@@ -20,7 +20,7 @@ disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-ra -q --cov=app"
+addopts = "-ra -q"
 testpaths = [
     "tests",
 ]

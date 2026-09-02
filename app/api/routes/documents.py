@@ -1,13 +1,18 @@
+"""
+Document management routes supporting 15+ multi-format sources.
+"""
 import os
 import uuid
 import aiofiles
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 from fastapi import APIRouter, Request, UploadFile, File, HTTPException
 from app.api.schemas.responses import DocumentResponse, DocumentListResponse
-from app.rag.document_loader import load_document, SUPPORTED_FORMATS
+from app.rag.document_loader import load_document, SUPPORTED_LOCAL_FORMATS
 from app.rag.chunking import split_documents
+from app.utils.logger import setup_logger
 
+logger = setup_logger(__name__, "INFO")
 router = APIRouter(prefix="/api/v1/documents", tags=["Documents"])
 
 DOCUMENTS: List[DocumentResponse] = []
@@ -17,13 +22,16 @@ async def upload_document(
     request: Request,
     file: UploadFile = File(...)
 ):
-    """Uploads and processes a document."""
+    """Uploads and processes a document across 15+ supported formats."""
     ext = ""
     if file.filename:
         ext = os.path.splitext(file.filename)[1].lower()
     
-    if ext not in SUPPORTED_FORMATS:
-        raise HTTPException(status_code=400, detail=f"Unsupported file format. Supported formats: {SUPPORTED_FORMATS}")
+    if ext not in SUPPORTED_LOCAL_FORMATS:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unsupported file format '{ext}'. Supported formats: {SUPPORTED_LOCAL_FORMATS}"
+        )
 
     import tempfile
     temp_dir = tempfile.gettempdir()
@@ -44,21 +52,27 @@ async def upload_document(
         response = DocumentResponse(
             document_id=doc_id,
             filename=file.filename or "unknown",
+            format=ext.replace(".", ""),
             chunk_count=len(chunks),
             status="processed",
-            uploaded_at=datetime.utcnow()
+            uploaded_at=datetime.now(timezone.utc)
         )
         DOCUMENTS.append(response)
+        logger.info(f"Successfully processed and indexed document '{file.filename}' ({len(chunks)} chunks)")
         return response
     except Exception as e:
+        logger.error(f"Document processing failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error processing document: {str(e)}")
     finally:
         if os.path.exists(temp_path):
-            os.remove(temp_path)
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
 
 @router.get("/", response_model=DocumentListResponse)
 async def list_documents():
-    """Lists all uploaded documents."""
+    """Lists all indexed documents."""
     return DocumentListResponse(
         documents=DOCUMENTS,
         total_count=len(DOCUMENTS)
@@ -73,5 +87,4 @@ async def delete_document(document_id: str):
         raise HTTPException(status_code=404, detail="Document not found")
         
     DOCUMENTS = [d for d in DOCUMENTS if d.document_id != document_id]
-    
     return {"message": f"Document {document_id} deleted successfully"}

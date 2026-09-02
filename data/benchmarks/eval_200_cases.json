@@ -1,0 +1,3487 @@
+[
+  {
+    "id": "TC-001",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Mixture of Experts (MoE) routing mechanisms and sparse gating functions.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "router loss",
+      "sparse top-k",
+      "expert capacity",
+      "load balancing",
+      "token routing"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-002",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Explain the architectural trade-offs and performance benchmarks of FlashAttention memory bandwidth optimization and IO complexity.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "kernel tiling",
+      "SRAM",
+      "HBM",
+      "tiled softmax",
+      "online softmax"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-003",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Direct Preference Optimization (DPO) vs Reinforcement Learning from Human Feedback (RLHF).",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "implicit reward",
+      "Bradley-Terry model",
+      "PPO stability",
+      "reference policy",
+      "cross-entropy"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-004",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Quantization techniques: INT4, FP4, AWQ, and GPTQ degradation curves.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "activation outliers",
+      "per-channel scaling",
+      "hessian matrix",
+      "zero-point",
+      "dequantization"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-005",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Multi-Query and Grouped Query Attention (GQA) key-value cache efficiency.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "KV cache compression",
+      "memory bandwidth",
+      "head sharing",
+      "inference throughput",
+      "latency SLA"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-006",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Speculative decoding algorithms for LLM inference acceleration.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "draft model",
+      "target model verification",
+      "acceptance rate",
+      "token trees",
+      "speedup ratio"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-007",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Retrieval-Augmented Generation (RAG) chunking strategies and hybrid retrieval.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "dense embeddings",
+      "sparse BM25",
+      "reciprocal rank fusion",
+      "semantic boundary",
+      "token overlap"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-008",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Autonomous Multi-Agent coordination: CrewAI and LangGraph state graphs.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "state machine",
+      "conditional edges",
+      "agent delegation",
+      "feedback loop",
+      "task decomposition"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-009",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Contextual compression and reranking models for vector search.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "cross-encoder",
+      "bi-encoder",
+      "relevance scoring",
+      "passage reordering",
+      "context window"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-010",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Long-context needle in a haystack retrieval and RoPE frequency scaling.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "rotary position embedding",
+      "NTK-aware scaling",
+      "attention decay",
+      "interpolation",
+      "extrapolation"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-011",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Solid-state lithium-metal battery energy density compared to traditional Li-ion.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "solid electrolyte",
+      "dendrite suppression",
+      "Wh/kg",
+      "ceramic separator",
+      "thermal stability"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-012",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Perovskite-silicon tandem solar cell power conversion efficiency benchmarks.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "bandgap tuning",
+      "shockley-queisser limit",
+      "degradation rate",
+      "moisture stability",
+      "efficiency percentage"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-013",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Proton Exchange Membrane (PEM) electrolyzer green hydrogen production efficiency.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "iridium catalyst",
+      "current density",
+      "kWh per kg",
+      "cell voltage",
+      "membrane degradation"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-014",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Flow battery chemistries: Vanadium redox vs iron-chromium for grid storage.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "electrolyte cost",
+      "cycle life",
+      "round-trip efficiency",
+      "membrane crossover",
+      "mwh capacity"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-015",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Sodium-ion battery cathode materials and cold-weather discharge rates.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "prussian blue",
+      "layered oxide",
+      "capacity retention",
+      "sub-zero performance",
+      "raw material abundance"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-016",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Thermal runaway mitigation in electric vehicle battery packs with phase change materials.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "propagation barrier",
+      "flame retardancy",
+      "latent heat",
+      "cell spacing",
+      "pyrolysis"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-017",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Supercapacitor graphene electrode specific capacitance and power density.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "electrochemical double layer",
+      "specific surface area",
+      "farad per gram",
+      "charge discharge rate",
+      "esr"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-018",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Small Modular Nuclear Reactors (SMR) passive safety cooling systems.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "natural circulation",
+      "containment vessel",
+      "gravity feed",
+      "decay heat removal",
+      "megawatt electrical"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-019",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Direct air carbon capture (DAC) thermodynamic energy penalty and sorbent regeneration.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "mollier diagram",
+      "thermal energy input",
+      "kj per mole co2",
+      "amine functionalization",
+      "vacuum desorption"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-020",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Solid oxide fuel cell (SOFC) operating temperature degradation mechanisms.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "interconnect oxidation",
+      "chromium poisoning",
+      "cermet anode",
+      "thermal cycling",
+      "ohmic resistance"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-021",
+    "category": "Biomedical & Genomics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of CRISPR-Cas9 base editing precision and off-target cleavage reduction.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "deaminase",
+      "guide RNA",
+      "pam sequence",
+      "single nucleotide variant",
+      "fidelity"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-022",
+    "category": "Biomedical & Genomics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Lipid nanoparticle (LNP) formulations for targeted mRNA vaccine delivery.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "ionizable lipid",
+      "pegylated lipid",
+      "endosomal escape",
+      "encapsulation efficiency",
+      "immunogenicity"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-023",
+    "category": "Biomedical & Genomics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of AlphaFold protein tertiary structure prediction and conformational dynamics.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "multiple sequence alignment",
+      "evoformer",
+      "invariant point attention",
+      "pLDDT score",
+      "docking"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-024",
+    "category": "Biomedical & Genomics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of CAR-T cell therapy antigen escape mechanisms in hematologic malignancies.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "antigen loss",
+      "cd19 modulation",
+      "t-cell exhaustion",
+      "cytokine release syndrome",
+      "bispecific car"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-025",
+    "category": "Biomedical & Genomics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of mRNA circularization techniques and stability against ribonuclease degradation.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "group i intron",
+      "circular rna",
+      "half-life extension",
+      "translation persistence",
+      "immunogenicity"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-026",
+    "category": "Biomedical & Genomics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Single-cell RNA sequencing (scRNA-seq) trajectory inference and cell lineage tracing.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "pseudotime",
+      "umap embedding",
+      "monocle",
+      "cellular heterogeneity",
+      "droplet based"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-027",
+    "category": "Biomedical & Genomics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Liquid biopsy circulating tumor DNA (ctDNA) detection limits and variant allele frequency.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "next generation sequencing",
+      "digital pcr",
+      "sensitivity threshold",
+      "early detection",
+      "somatic mutation"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-028",
+    "category": "Biomedical & Genomics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Antibody-drug conjugates (ADCs) linker stability and bystander killing effect.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "cleavable linker",
+      "cytotoxic payload",
+      "dar ratio",
+      "target selectivity",
+      "pharmacokinetics"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-029",
+    "category": "Biomedical & Genomics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Microbiome short-chain fatty acids (SCFA) and intestinal barrier integrity.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "butyrate",
+      "tight junctions",
+      "gpr43 receptor",
+      "inflammation modulation",
+      "gut-brain axis"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-030",
+    "category": "Biomedical & Genomics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Neurodegenerative tau protein phosphorylation cascades and amyloid-beta clearance.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "hyperphosphorylation",
+      "microtubule stability",
+      "glymphatic system",
+      "oligomer toxicity",
+      "astrogliosis"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-031",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Kubernetes Horizontal Pod Autoscaler (HPA) algorithm with custom metrics.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "target metric",
+      "stabilization window",
+      "replica calculation",
+      "metrics server",
+      "prometheus adapter"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-032",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Raft consensus state machine replication and leader election edge cases.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "term number",
+      "log index",
+      "split vote",
+      "heartbeat timeout",
+      "quorum majority"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-033",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Zero-copy networking with eBPF and XDP for high-throughput packet filtering.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "kernel bypass",
+      "ring buffer",
+      "xdp action",
+      "jit compilation",
+      "packet processing latency"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-034",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Distributed transaction isolation: Two-phase commit (2PC) vs Saga pattern.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "coordinator failure",
+      "compensating transaction",
+      "idempotency",
+      "event sourcing",
+      "eventual consistency"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-035",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Vector database indexing: HNSW vs IVF-PQ indexing tradeoffs.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "graph connectivity",
+      "hierarchical layers",
+      "quantization error",
+      "recall at k",
+      "qps throughput"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-036",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Microservice service mesh: Envoy proxy sidecar memory overhead and mTLS latency.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "mutual tls",
+      "handshake latency",
+      "connection pooling",
+      "control plane",
+      "filter chain"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-037",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Database sharding and consistent hashing with virtual nodes.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "hash ring",
+      "rebalancing overhead",
+      "hotspot mitigation",
+      "range partitioning",
+      "data migration"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-038",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Kafka event streaming partition rebalancing protocols and consumer lag.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "cooperative rebalance",
+      "eager protocol",
+      "commit offset",
+      "consumer group",
+      "watermark"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-039",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Explain the architectural trade-offs and performance benchmarks of LSM-tree write amplification and compaction algorithms in Key-Value stores.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "leveled compaction",
+      "size-tiered",
+      "sstables",
+      "bloom filters",
+      "write stall"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-040",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Multi-cloud active-active database replication and conflict resolution (CRDT).",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "crdt state",
+      "vector clocks",
+      "network partition",
+      "replication lag",
+      "split brain"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-041",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of High-frequency trading order book matching engine latency and queue priority.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "fpga acceleration",
+      "limit order book",
+      "price-time priority",
+      "tick-to-trade",
+      "sub-microsecond"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-042",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Black-Scholes-Merton option pricing vs local volatility surface calibration.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "implied volatility smile",
+      "dupire equation",
+      "greeks calculation",
+      "monte carlo simulation",
+      "pde solver"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-043",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Value at Risk (VaR) and Expected Shortfall under Basel IV regulatory frameworks.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "conditional var",
+      "historical simulation",
+      "confidence level 99",
+      "backtesting exception",
+      "fat tails"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-044",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Quantitative factor investing: Momentum, Value, and Quality multi-factor alpha.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "fama-french",
+      "information ratio",
+      "sharpe ratio",
+      "turnover constraint",
+      "factor correlation"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-045",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Pairs trading statistical arbitrage with cointegration tests (Engle-Granger).",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "stationarity",
+      "augmented dickey-fuller",
+      "spread z-score",
+      "mean reversion",
+      "half-life"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-046",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Credit risk probability of default (PD) modeling with logistic regression and XGBoost.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "roc-auc",
+      "woe transformation",
+      "information value",
+      "imbalanced classes",
+      "credit score card"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-047",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of High-yield corporate bond spread widening during Federal Reserve interest rate hikes.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "option-adjusted spread",
+      "duration matching",
+      "default hazard rate",
+      "convexity",
+      "liquidity premium"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-048",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Algorithmic optimal trade execution using Almgren-Chriss market impact model.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "permanent impact",
+      "temporary impact",
+      "liquidation horizon",
+      "risk aversion parameter",
+      "vwap"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-049",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Decentralized automated market maker (AMM) constant product formula and impermanent loss.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "xy=k",
+      "arbitrage rebalancing",
+      "slippage tolerance",
+      "liquidity provider fee",
+      "price divergence"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-050",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Macroeconomic inflation forecasting with vector autoregression (VAR) and CPI decomposition.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "core cpi",
+      "lag order selection",
+      "impulse response function",
+      "granger causality",
+      "pce deflator"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-051",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Explain the architectural trade-offs and performance benchmarks of NIST post-quantum cryptography standards: ML-KEM (Kyber) and ML-DSA (Dilithium).",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "lattice cryptography",
+      "learning with errors",
+      "public key size",
+      "quantum resistance",
+      "shor algorithm"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-052",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Zero-knowledge proofs: zk-SNARKs vs zk-STARKs proof size and verification speed.",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "trusted setup",
+      "arithmetic circuit",
+      "succinctness",
+      "polynomial commitment",
+      "elliptic curves"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-053",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Explain the architectural trade-offs and performance benchmarks of OAuth 2.1 and OpenID Connect authorization code flow with PKCE security.",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "code verifier",
+      "code challenge",
+      "token exchange",
+      "replay attack",
+      "client secret"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-054",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Memory-safe programming: Rust ownership model vs C++ smart pointer overhead.",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "borrow checker",
+      "lifetime analysis",
+      "zero-cost abstraction",
+      "undefined behavior",
+      "data race"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-055",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Explain the architectural trade-offs and performance benchmarks of WebAssembly (WASM) sandboxing architecture and memory isolation guarantees.",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "linear memory",
+      "bounds checking",
+      "capability-based security",
+      "control flow integrity",
+      "spectre mitigation"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-056",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Explain the architectural trade-offs and performance benchmarks of TLS 1.3 cryptographic handshake latency and forward secrecy guarantees.",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "0-rtt resumption",
+      "diffie-hellman ephemeral",
+      "handshake round trips",
+      "cipher suites",
+      "downgrade protection"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-057",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Supply chain security: Software Bill of Materials (SBOM) and SLSA framework levels.",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "attestation",
+      "provenance",
+      "spdx",
+      "cyclonedx",
+      "dependency vulnerability"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-058",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Fuzzing methodologies: Coverage-guided greybox fuzzing with AFL++ and LibFuzzer.",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "code coverage",
+      "instrumentation",
+      "crash deduplication",
+      "corpus mutation",
+      "sanitizers"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-059",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Hardware security modules (HSM) and Trusted Execution Environments (TEE/Enclaves).",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "intel sgx",
+      "arm trustzone",
+      "attestation verification",
+      "side-channel leakage",
+      "key protection"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-060",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Active Directory Kerberos ticket authentication and Golden Ticket attack detection.",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "tgt ticket",
+      "krbtgt hash",
+      "pac validation",
+      "service principal name",
+      "pass the ticket"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-061",
+    "category": "Software Architecture & DevOps",
+    "query": "Explain the architectural trade-offs and performance benchmarks of FastAPI asynchronous request processing with ASGI and Uvicorn worker pools.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "asyncio event loop",
+      "uvloop",
+      "gunicorn workers",
+      "non-blocking io",
+      "concurrency"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-062",
+    "category": "Software Architecture & DevOps",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Pydantic v2 performance improvements with Rust core validation engine.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "serialization",
+      "core schema",
+      "zero copy",
+      "type validation",
+      "benchmark throughput"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-063",
+    "category": "Software Architecture & DevOps",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Docker multi-stage builds for minimal container image attack surface.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "builder pattern",
+      "scratch base",
+      "caching layers",
+      "vulnerability scan",
+      "image size"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-064",
+    "category": "Software Architecture & DevOps",
+    "query": "Explain the architectural trade-offs and performance benchmarks of GitHub Actions CI/CD workflow optimization: Matrix builds and dependency caching.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "cache hit rate",
+      "concurrency groups",
+      "self-hosted runners",
+      "artifact upload",
+      "pipeline turnaround"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-065",
+    "category": "Software Architecture & DevOps",
+    "query": "Explain the architectural trade-offs and performance benchmarks of AWS ECS Fargate serverless container deployment and task definition auto-scaling.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "cpu target tracking",
+      "memory utilization",
+      "desired count",
+      "load balancer healthcheck",
+      "drain timeout"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-066",
+    "category": "Software Architecture & DevOps",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Infrastructure as Code (IaC): Terraform state management and drift detection.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "remote backend",
+      "s3 dynamodb locking",
+      "state file",
+      "plan validation",
+      "reconciliation"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-067",
+    "category": "Software Architecture & DevOps",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Database schema migrations with zero-downtime expand and contract pattern.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "backward compatibility",
+      "column deprecation",
+      "dual writing",
+      "alembic",
+      "view abstraction"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-068",
+    "category": "Software Architecture & DevOps",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Distributed tracing with OpenTelemetry (OTel) and Jaeger trace propagation.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "w3c tracecontext",
+      "span context",
+      "sampling rate",
+      "baggage",
+      "latency breakdown"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-069",
+    "category": "Software Architecture & DevOps",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Circuit breaker pattern in microservices with resilience4j and tenacity retries.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "failure threshold",
+      "half-open state",
+      "exponential backoff",
+      "fallback handler",
+      "jitter"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-070",
+    "category": "Software Architecture & DevOps",
+    "query": "Explain the architectural trade-offs and performance benchmarks of API rate limiting algorithms: Token bucket, Leaky bucket, and Sliding window.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "redis rate limiter",
+      "counter sliding log",
+      "burst capacity",
+      "429 http status",
+      "concurrency window"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-071",
+    "category": "Web & Mobile Development",
+    "query": "Explain the architectural trade-offs and performance benchmarks of React Server Components (RSC) vs Client-Side Rendering (CSR) bundle size.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "server boundary",
+      "streaming ssr",
+      "hydration overhead",
+      "zero-bundle-size",
+      "suspense"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-072",
+    "category": "Web & Mobile Development",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Web Workers and SharedArrayBuffer for multithreaded JavaScript execution.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "atomic operations",
+      "cross-origin isolation",
+      "off-main-thread",
+      "postMessage",
+      "structured clone"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-073",
+    "category": "Web & Mobile Development",
+    "query": "Explain the architectural trade-offs and performance benchmarks of CSS Container Queries vs Media Queries for modular responsive component design.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "container-type",
+      "cqw cqh units",
+      "responsive design",
+      "component isolation",
+      "fluid typography"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-074",
+    "category": "Web & Mobile Development",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Progressive Web App (PWA) service worker caching strategies (CacheFirst vs NetworkFirst).",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "offline capability",
+      "cache storage",
+      "fetch event",
+      "background sync",
+      "push notifications"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-075",
+    "category": "Web & Mobile Development",
+    "query": "Explain the architectural trade-offs and performance benchmarks of HTTP/3 and QUIC transport protocol performance over lossy wireless networks.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "udp transport",
+      "head-of-line blocking",
+      "connection migration",
+      "tls 1.3 handshake",
+      "packet loss"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-076",
+    "category": "Web & Mobile Development",
+    "query": "Explain the architectural trade-offs and performance benchmarks of WebRTC peer-to-peer data channel architecture and STUN/TURN traversal.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "ice candidates",
+      "nat traversal",
+      "sdp offer answer",
+      "datachannel latency",
+      "dtls srtp"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-077",
+    "category": "Web & Mobile Development",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Browser DOM rendering engine pipeline: Layout, Paint, and Composite steps.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "css containment",
+      "reflow trigger",
+      "gpu compositing",
+      "transform opacity",
+      "frame budget"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-078",
+    "category": "Web & Mobile Development",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Modern state management: Signals (fine-grained reactivity) vs Redux store.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "dependency graph",
+      "subscriber tracking",
+      "render minimization",
+      "immutability",
+      "predictable state"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-079",
+    "category": "Web & Mobile Development",
+    "query": "Explain the architectural trade-offs and performance benchmarks of WebAssembly for client-side audio and video processing with WebCodecs.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "video frame decoding",
+      "hardware acceleration",
+      "zero-copy transfer",
+      "real-time canvas",
+      "wasm simd"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-080",
+    "category": "Web & Mobile Development",
+    "query": "Explain the architectural trade-offs and performance benchmarks of Core Web Vitals metrics optimization: LCP, INP, and CLS performance tuning.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "largest contentful paint",
+      "interaction to next paint",
+      "cumulative layout shift",
+      "resource hints",
+      "critical path"
+    ],
+    "difficulty": "standard",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-081",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Mixture of Experts (MoE) routing mechanisms and sparse gating functions.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "router loss",
+      "sparse top-k",
+      "expert capacity",
+      "load balancing",
+      "token routing"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-082",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for FlashAttention memory bandwidth optimization and IO complexity.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "kernel tiling",
+      "SRAM",
+      "HBM",
+      "tiled softmax",
+      "online softmax"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-083",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Direct Preference Optimization (DPO) vs Reinforcement Learning from Human Feedback (RLHF).",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "implicit reward",
+      "Bradley-Terry model",
+      "PPO stability",
+      "reference policy",
+      "cross-entropy"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-084",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Quantization techniques: INT4, FP4, AWQ, and GPTQ degradation curves.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "activation outliers",
+      "per-channel scaling",
+      "hessian matrix",
+      "zero-point",
+      "dequantization"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-085",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Multi-Query and Grouped Query Attention (GQA) key-value cache efficiency.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "KV cache compression",
+      "memory bandwidth",
+      "head sharing",
+      "inference throughput",
+      "latency SLA"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-086",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Speculative decoding algorithms for LLM inference acceleration.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "draft model",
+      "target model verification",
+      "acceptance rate",
+      "token trees",
+      "speedup ratio"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-087",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Retrieval-Augmented Generation (RAG) chunking strategies and hybrid retrieval.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "dense embeddings",
+      "sparse BM25",
+      "reciprocal rank fusion",
+      "semantic boundary",
+      "token overlap"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-088",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Autonomous Multi-Agent coordination: CrewAI and LangGraph state graphs.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "state machine",
+      "conditional edges",
+      "agent delegation",
+      "feedback loop",
+      "task decomposition"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-089",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Contextual compression and reranking models for vector search.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "cross-encoder",
+      "bi-encoder",
+      "relevance scoring",
+      "passage reordering",
+      "context window"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-090",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Long-context needle in a haystack retrieval and RoPE frequency scaling.",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "rotary position embedding",
+      "NTK-aware scaling",
+      "attention decay",
+      "interpolation",
+      "extrapolation"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-091",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Solid-state lithium-metal battery energy density compared to traditional Li-ion.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "solid electrolyte",
+      "dendrite suppression",
+      "Wh/kg",
+      "ceramic separator",
+      "thermal stability"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-092",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Perovskite-silicon tandem solar cell power conversion efficiency benchmarks.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "bandgap tuning",
+      "shockley-queisser limit",
+      "degradation rate",
+      "moisture stability",
+      "efficiency percentage"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-093",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Proton Exchange Membrane (PEM) electrolyzer green hydrogen production efficiency.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "iridium catalyst",
+      "current density",
+      "kWh per kg",
+      "cell voltage",
+      "membrane degradation"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-094",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Flow battery chemistries: Vanadium redox vs iron-chromium for grid storage.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "electrolyte cost",
+      "cycle life",
+      "round-trip efficiency",
+      "membrane crossover",
+      "mwh capacity"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-095",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Sodium-ion battery cathode materials and cold-weather discharge rates.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "prussian blue",
+      "layered oxide",
+      "capacity retention",
+      "sub-zero performance",
+      "raw material abundance"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-096",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Thermal runaway mitigation in electric vehicle battery packs with phase change materials.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "propagation barrier",
+      "flame retardancy",
+      "latent heat",
+      "cell spacing",
+      "pyrolysis"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-097",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Supercapacitor graphene electrode specific capacitance and power density.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "electrochemical double layer",
+      "specific surface area",
+      "farad per gram",
+      "charge discharge rate",
+      "esr"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-098",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Small Modular Nuclear Reactors (SMR) passive safety cooling systems.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "natural circulation",
+      "containment vessel",
+      "gravity feed",
+      "decay heat removal",
+      "megawatt electrical"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-099",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Direct air carbon capture (DAC) thermodynamic energy penalty and sorbent regeneration.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "mollier diagram",
+      "thermal energy input",
+      "kj per mole co2",
+      "amine functionalization",
+      "vacuum desorption"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-100",
+    "category": "Clean Energy & Battery Tech",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Solid oxide fuel cell (SOFC) operating temperature degradation mechanisms.",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "interconnect oxidation",
+      "chromium poisoning",
+      "cermet anode",
+      "thermal cycling",
+      "ohmic resistance"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-101",
+    "category": "Biomedical & Genomics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for CRISPR-Cas9 base editing precision and off-target cleavage reduction.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "deaminase",
+      "guide RNA",
+      "pam sequence",
+      "single nucleotide variant",
+      "fidelity"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-102",
+    "category": "Biomedical & Genomics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Lipid nanoparticle (LNP) formulations for targeted mRNA vaccine delivery.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "ionizable lipid",
+      "pegylated lipid",
+      "endosomal escape",
+      "encapsulation efficiency",
+      "immunogenicity"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-103",
+    "category": "Biomedical & Genomics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for AlphaFold protein tertiary structure prediction and conformational dynamics.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "multiple sequence alignment",
+      "evoformer",
+      "invariant point attention",
+      "pLDDT score",
+      "docking"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-104",
+    "category": "Biomedical & Genomics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for CAR-T cell therapy antigen escape mechanisms in hematologic malignancies.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "antigen loss",
+      "cd19 modulation",
+      "t-cell exhaustion",
+      "cytokine release syndrome",
+      "bispecific car"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-105",
+    "category": "Biomedical & Genomics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for mRNA circularization techniques and stability against ribonuclease degradation.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "group i intron",
+      "circular rna",
+      "half-life extension",
+      "translation persistence",
+      "immunogenicity"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-106",
+    "category": "Biomedical & Genomics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Single-cell RNA sequencing (scRNA-seq) trajectory inference and cell lineage tracing.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "pseudotime",
+      "umap embedding",
+      "monocle",
+      "cellular heterogeneity",
+      "droplet based"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-107",
+    "category": "Biomedical & Genomics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Liquid biopsy circulating tumor DNA (ctDNA) detection limits and variant allele frequency.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "next generation sequencing",
+      "digital pcr",
+      "sensitivity threshold",
+      "early detection",
+      "somatic mutation"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-108",
+    "category": "Biomedical & Genomics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Antibody-drug conjugates (ADCs) linker stability and bystander killing effect.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "cleavable linker",
+      "cytotoxic payload",
+      "dar ratio",
+      "target selectivity",
+      "pharmacokinetics"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-109",
+    "category": "Biomedical & Genomics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Microbiome short-chain fatty acids (SCFA) and intestinal barrier integrity.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "butyrate",
+      "tight junctions",
+      "gpr43 receptor",
+      "inflammation modulation",
+      "gut-brain axis"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-110",
+    "category": "Biomedical & Genomics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Neurodegenerative tau protein phosphorylation cascades and amyloid-beta clearance.",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "hyperphosphorylation",
+      "microtubule stability",
+      "glymphatic system",
+      "oligomer toxicity",
+      "astrogliosis"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-111",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Kubernetes Horizontal Pod Autoscaler (HPA) algorithm with custom metrics.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "target metric",
+      "stabilization window",
+      "replica calculation",
+      "metrics server",
+      "prometheus adapter"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-112",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Raft consensus state machine replication and leader election edge cases.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "term number",
+      "log index",
+      "split vote",
+      "heartbeat timeout",
+      "quorum majority"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-113",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Zero-copy networking with eBPF and XDP for high-throughput packet filtering.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "kernel bypass",
+      "ring buffer",
+      "xdp action",
+      "jit compilation",
+      "packet processing latency"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-114",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Distributed transaction isolation: Two-phase commit (2PC) vs Saga pattern.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "coordinator failure",
+      "compensating transaction",
+      "idempotency",
+      "event sourcing",
+      "eventual consistency"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-115",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Vector database indexing: HNSW vs IVF-PQ indexing tradeoffs.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "graph connectivity",
+      "hierarchical layers",
+      "quantization error",
+      "recall at k",
+      "qps throughput"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-116",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Microservice service mesh: Envoy proxy sidecar memory overhead and mTLS latency.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "mutual tls",
+      "handshake latency",
+      "connection pooling",
+      "control plane",
+      "filter chain"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-117",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Database sharding and consistent hashing with virtual nodes.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "hash ring",
+      "rebalancing overhead",
+      "hotspot mitigation",
+      "range partitioning",
+      "data migration"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-118",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Kafka event streaming partition rebalancing protocols and consumer lag.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "cooperative rebalance",
+      "eager protocol",
+      "commit offset",
+      "consumer group",
+      "watermark"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-119",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for LSM-tree write amplification and compaction algorithms in Key-Value stores.",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "leveled compaction",
+      "size-tiered",
+      "sstables",
+      "bloom filters",
+      "write stall"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-120",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Multi-cloud active-active database replication and conflict resolution (CRDT).",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "crdt state",
+      "vector clocks",
+      "network partition",
+      "replication lag",
+      "split brain"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-121",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for High-frequency trading order book matching engine latency and queue priority.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "fpga acceleration",
+      "limit order book",
+      "price-time priority",
+      "tick-to-trade",
+      "sub-microsecond"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-122",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Black-Scholes-Merton option pricing vs local volatility surface calibration.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "implied volatility smile",
+      "dupire equation",
+      "greeks calculation",
+      "monte carlo simulation",
+      "pde solver"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-123",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Value at Risk (VaR) and Expected Shortfall under Basel IV regulatory frameworks.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "conditional var",
+      "historical simulation",
+      "confidence level 99",
+      "backtesting exception",
+      "fat tails"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-124",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Quantitative factor investing: Momentum, Value, and Quality multi-factor alpha.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "fama-french",
+      "information ratio",
+      "sharpe ratio",
+      "turnover constraint",
+      "factor correlation"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-125",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Pairs trading statistical arbitrage with cointegration tests (Engle-Granger).",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "stationarity",
+      "augmented dickey-fuller",
+      "spread z-score",
+      "mean reversion",
+      "half-life"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-126",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Credit risk probability of default (PD) modeling with logistic regression and XGBoost.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "roc-auc",
+      "woe transformation",
+      "information value",
+      "imbalanced classes",
+      "credit score card"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-127",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for High-yield corporate bond spread widening during Federal Reserve interest rate hikes.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "option-adjusted spread",
+      "duration matching",
+      "default hazard rate",
+      "convexity",
+      "liquidity premium"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-128",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Algorithmic optimal trade execution using Almgren-Chriss market impact model.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "permanent impact",
+      "temporary impact",
+      "liquidation horizon",
+      "risk aversion parameter",
+      "vwap"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-129",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Decentralized automated market maker (AMM) constant product formula and impermanent loss.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "xy=k",
+      "arbitrage rebalancing",
+      "slippage tolerance",
+      "liquidity provider fee",
+      "price divergence"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-130",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Macroeconomic inflation forecasting with vector autoregression (VAR) and CPI decomposition.",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "core cpi",
+      "lag order selection",
+      "impulse response function",
+      "granger causality",
+      "pce deflator"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-131",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for NIST post-quantum cryptography standards: ML-KEM (Kyber) and ML-DSA (Dilithium).",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "lattice cryptography",
+      "learning with errors",
+      "public key size",
+      "quantum resistance",
+      "shor algorithm"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-132",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Zero-knowledge proofs: zk-SNARKs vs zk-STARKs proof size and verification speed.",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "trusted setup",
+      "arithmetic circuit",
+      "succinctness",
+      "polynomial commitment",
+      "elliptic curves"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-133",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for OAuth 2.1 and OpenID Connect authorization code flow with PKCE security.",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "code verifier",
+      "code challenge",
+      "token exchange",
+      "replay attack",
+      "client secret"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-134",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Memory-safe programming: Rust ownership model vs C++ smart pointer overhead.",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "borrow checker",
+      "lifetime analysis",
+      "zero-cost abstraction",
+      "undefined behavior",
+      "data race"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-135",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for WebAssembly (WASM) sandboxing architecture and memory isolation guarantees.",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "linear memory",
+      "bounds checking",
+      "capability-based security",
+      "control flow integrity",
+      "spectre mitigation"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-136",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for TLS 1.3 cryptographic handshake latency and forward secrecy guarantees.",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "0-rtt resumption",
+      "diffie-hellman ephemeral",
+      "handshake round trips",
+      "cipher suites",
+      "downgrade protection"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-137",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Supply chain security: Software Bill of Materials (SBOM) and SLSA framework levels.",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "attestation",
+      "provenance",
+      "spdx",
+      "cyclonedx",
+      "dependency vulnerability"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-138",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Fuzzing methodologies: Coverage-guided greybox fuzzing with AFL++ and LibFuzzer.",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "code coverage",
+      "instrumentation",
+      "crash deduplication",
+      "corpus mutation",
+      "sanitizers"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-139",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Hardware security modules (HSM) and Trusted Execution Environments (TEE/Enclaves).",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "intel sgx",
+      "arm trustzone",
+      "attestation verification",
+      "side-channel leakage",
+      "key protection"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-140",
+    "category": "Cybersecurity & Cryptography",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Active Directory Kerberos ticket authentication and Golden Ticket attack detection.",
+    "target_source_format": "json",
+    "expected_assertions": [
+      "tgt ticket",
+      "krbtgt hash",
+      "pac validation",
+      "service principal name",
+      "pass the ticket"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-141",
+    "category": "Software Architecture & DevOps",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for FastAPI asynchronous request processing with ASGI and Uvicorn worker pools.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "asyncio event loop",
+      "uvloop",
+      "gunicorn workers",
+      "non-blocking io",
+      "concurrency"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-142",
+    "category": "Software Architecture & DevOps",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Pydantic v2 performance improvements with Rust core validation engine.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "serialization",
+      "core schema",
+      "zero copy",
+      "type validation",
+      "benchmark throughput"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-143",
+    "category": "Software Architecture & DevOps",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Docker multi-stage builds for minimal container image attack surface.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "builder pattern",
+      "scratch base",
+      "caching layers",
+      "vulnerability scan",
+      "image size"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-144",
+    "category": "Software Architecture & DevOps",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for GitHub Actions CI/CD workflow optimization: Matrix builds and dependency caching.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "cache hit rate",
+      "concurrency groups",
+      "self-hosted runners",
+      "artifact upload",
+      "pipeline turnaround"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-145",
+    "category": "Software Architecture & DevOps",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for AWS ECS Fargate serverless container deployment and task definition auto-scaling.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "cpu target tracking",
+      "memory utilization",
+      "desired count",
+      "load balancer healthcheck",
+      "drain timeout"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-146",
+    "category": "Software Architecture & DevOps",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Infrastructure as Code (IaC): Terraform state management and drift detection.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "remote backend",
+      "s3 dynamodb locking",
+      "state file",
+      "plan validation",
+      "reconciliation"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-147",
+    "category": "Software Architecture & DevOps",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Database schema migrations with zero-downtime expand and contract pattern.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "backward compatibility",
+      "column deprecation",
+      "dual writing",
+      "alembic",
+      "view abstraction"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-148",
+    "category": "Software Architecture & DevOps",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Distributed tracing with OpenTelemetry (OTel) and Jaeger trace propagation.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "w3c tracecontext",
+      "span context",
+      "sampling rate",
+      "baggage",
+      "latency breakdown"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-149",
+    "category": "Software Architecture & DevOps",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Circuit breaker pattern in microservices with resilience4j and tenacity retries.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "failure threshold",
+      "half-open state",
+      "exponential backoff",
+      "fallback handler",
+      "jitter"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-150",
+    "category": "Software Architecture & DevOps",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for API rate limiting algorithms: Token bucket, Leaky bucket, and Sliding window.",
+    "target_source_format": "md",
+    "expected_assertions": [
+      "redis rate limiter",
+      "counter sliding log",
+      "burst capacity",
+      "429 http status",
+      "concurrency window"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-151",
+    "category": "Web & Mobile Development",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for React Server Components (RSC) vs Client-Side Rendering (CSR) bundle size.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "server boundary",
+      "streaming ssr",
+      "hydration overhead",
+      "zero-bundle-size",
+      "suspense"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-152",
+    "category": "Web & Mobile Development",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Web Workers and SharedArrayBuffer for multithreaded JavaScript execution.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "atomic operations",
+      "cross-origin isolation",
+      "off-main-thread",
+      "postMessage",
+      "structured clone"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-153",
+    "category": "Web & Mobile Development",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for CSS Container Queries vs Media Queries for modular responsive component design.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "container-type",
+      "cqw cqh units",
+      "responsive design",
+      "component isolation",
+      "fluid typography"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-154",
+    "category": "Web & Mobile Development",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Progressive Web App (PWA) service worker caching strategies (CacheFirst vs NetworkFirst).",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "offline capability",
+      "cache storage",
+      "fetch event",
+      "background sync",
+      "push notifications"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-155",
+    "category": "Web & Mobile Development",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for HTTP/3 and QUIC transport protocol performance over lossy wireless networks.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "udp transport",
+      "head-of-line blocking",
+      "connection migration",
+      "tls 1.3 handshake",
+      "packet loss"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-156",
+    "category": "Web & Mobile Development",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for WebRTC peer-to-peer data channel architecture and STUN/TURN traversal.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "ice candidates",
+      "nat traversal",
+      "sdp offer answer",
+      "datachannel latency",
+      "dtls srtp"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-157",
+    "category": "Web & Mobile Development",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Browser DOM rendering engine pipeline: Layout, Paint, and Composite steps.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "css containment",
+      "reflow trigger",
+      "gpu compositing",
+      "transform opacity",
+      "frame budget"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-158",
+    "category": "Web & Mobile Development",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Modern state management: Signals (fine-grained reactivity) vs Redux store.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "dependency graph",
+      "subscriber tracking",
+      "render minimization",
+      "immutability",
+      "predictable state"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-159",
+    "category": "Web & Mobile Development",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for WebAssembly for client-side audio and video processing with WebCodecs.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "video frame decoding",
+      "hardware acceleration",
+      "zero-copy transfer",
+      "real-time canvas",
+      "wasm simd"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-160",
+    "category": "Web & Mobile Development",
+    "query": "Provide a detailed quantitative comparison and state-of-the-art metrics for Core Web Vitals metrics optimization: LCP, INP, and CLS performance tuning.",
+    "target_source_format": "html",
+    "expected_assertions": [
+      "largest contentful paint",
+      "interaction to next paint",
+      "cumulative layout shift",
+      "resource hints",
+      "critical path"
+    ],
+    "difficulty": "deep",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-161",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "What are the implementation challenges and production verification standards for Mixture of Experts (MoE) routing mechanisms and sparse gating functions?",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "router loss",
+      "sparse top-k",
+      "expert capacity",
+      "load balancing",
+      "token routing"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-162",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "What are the implementation challenges and production verification standards for FlashAttention memory bandwidth optimization and IO complexity?",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "kernel tiling",
+      "SRAM",
+      "HBM",
+      "tiled softmax",
+      "online softmax"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-163",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "What are the implementation challenges and production verification standards for Direct Preference Optimization (DPO) vs Reinforcement Learning from Human Feedback (RLHF)?",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "implicit reward",
+      "Bradley-Terry model",
+      "PPO stability",
+      "reference policy",
+      "cross-entropy"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-164",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "What are the implementation challenges and production verification standards for Quantization techniques: INT4, FP4, AWQ, and GPTQ degradation curves?",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "activation outliers",
+      "per-channel scaling",
+      "hessian matrix",
+      "zero-point",
+      "dequantization"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-165",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "What are the implementation challenges and production verification standards for Multi-Query and Grouped Query Attention (GQA) key-value cache efficiency?",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "KV cache compression",
+      "memory bandwidth",
+      "head sharing",
+      "inference throughput",
+      "latency SLA"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-166",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "What are the implementation challenges and production verification standards for Speculative decoding algorithms for LLM inference acceleration?",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "draft model",
+      "target model verification",
+      "acceptance rate",
+      "token trees",
+      "speedup ratio"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-167",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "What are the implementation challenges and production verification standards for Retrieval-Augmented Generation (RAG) chunking strategies and hybrid retrieval?",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "dense embeddings",
+      "sparse BM25",
+      "reciprocal rank fusion",
+      "semantic boundary",
+      "token overlap"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-168",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "What are the implementation challenges and production verification standards for Autonomous Multi-Agent coordination: CrewAI and LangGraph state graphs?",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "state machine",
+      "conditional edges",
+      "agent delegation",
+      "feedback loop",
+      "task decomposition"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-169",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "What are the implementation challenges and production verification standards for Contextual compression and reranking models for vector search?",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "cross-encoder",
+      "bi-encoder",
+      "relevance scoring",
+      "passage reordering",
+      "context window"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-170",
+    "category": "Artificial Intelligence & LLMs",
+    "query": "What are the implementation challenges and production verification standards for Long-context needle in a haystack retrieval and RoPE frequency scaling?",
+    "target_source_format": "arxiv",
+    "expected_assertions": [
+      "rotary position embedding",
+      "NTK-aware scaling",
+      "attention decay",
+      "interpolation",
+      "extrapolation"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-171",
+    "category": "Clean Energy & Battery Tech",
+    "query": "What are the implementation challenges and production verification standards for Solid-state lithium-metal battery energy density compared to traditional Li-ion?",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "solid electrolyte",
+      "dendrite suppression",
+      "Wh/kg",
+      "ceramic separator",
+      "thermal stability"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-172",
+    "category": "Clean Energy & Battery Tech",
+    "query": "What are the implementation challenges and production verification standards for Perovskite-silicon tandem solar cell power conversion efficiency benchmarks?",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "bandgap tuning",
+      "shockley-queisser limit",
+      "degradation rate",
+      "moisture stability",
+      "efficiency percentage"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-173",
+    "category": "Clean Energy & Battery Tech",
+    "query": "What are the implementation challenges and production verification standards for Proton Exchange Membrane (PEM) electrolyzer green hydrogen production efficiency?",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "iridium catalyst",
+      "current density",
+      "kWh per kg",
+      "cell voltage",
+      "membrane degradation"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-174",
+    "category": "Clean Energy & Battery Tech",
+    "query": "What are the implementation challenges and production verification standards for Flow battery chemistries: Vanadium redox vs iron-chromium for grid storage?",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "electrolyte cost",
+      "cycle life",
+      "round-trip efficiency",
+      "membrane crossover",
+      "mwh capacity"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-175",
+    "category": "Clean Energy & Battery Tech",
+    "query": "What are the implementation challenges and production verification standards for Sodium-ion battery cathode materials and cold-weather discharge rates?",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "prussian blue",
+      "layered oxide",
+      "capacity retention",
+      "sub-zero performance",
+      "raw material abundance"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-176",
+    "category": "Clean Energy & Battery Tech",
+    "query": "What are the implementation challenges and production verification standards for Thermal runaway mitigation in electric vehicle battery packs with phase change materials?",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "propagation barrier",
+      "flame retardancy",
+      "latent heat",
+      "cell spacing",
+      "pyrolysis"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-177",
+    "category": "Clean Energy & Battery Tech",
+    "query": "What are the implementation challenges and production verification standards for Supercapacitor graphene electrode specific capacitance and power density?",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "electrochemical double layer",
+      "specific surface area",
+      "farad per gram",
+      "charge discharge rate",
+      "esr"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-178",
+    "category": "Clean Energy & Battery Tech",
+    "query": "What are the implementation challenges and production verification standards for Small Modular Nuclear Reactors (SMR) passive safety cooling systems?",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "natural circulation",
+      "containment vessel",
+      "gravity feed",
+      "decay heat removal",
+      "megawatt electrical"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-179",
+    "category": "Clean Energy & Battery Tech",
+    "query": "What are the implementation challenges and production verification standards for Direct air carbon capture (DAC) thermodynamic energy penalty and sorbent regeneration?",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "mollier diagram",
+      "thermal energy input",
+      "kj per mole co2",
+      "amine functionalization",
+      "vacuum desorption"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-180",
+    "category": "Clean Energy & Battery Tech",
+    "query": "What are the implementation challenges and production verification standards for Solid oxide fuel cell (SOFC) operating temperature degradation mechanisms?",
+    "target_source_format": "pdf",
+    "expected_assertions": [
+      "interconnect oxidation",
+      "chromium poisoning",
+      "cermet anode",
+      "thermal cycling",
+      "ohmic resistance"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-181",
+    "category": "Biomedical & Genomics",
+    "query": "What are the implementation challenges and production verification standards for CRISPR-Cas9 base editing precision and off-target cleavage reduction?",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "deaminase",
+      "guide RNA",
+      "pam sequence",
+      "single nucleotide variant",
+      "fidelity"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-182",
+    "category": "Biomedical & Genomics",
+    "query": "What are the implementation challenges and production verification standards for Lipid nanoparticle (LNP) formulations for targeted mRNA vaccine delivery?",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "ionizable lipid",
+      "pegylated lipid",
+      "endosomal escape",
+      "encapsulation efficiency",
+      "immunogenicity"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-183",
+    "category": "Biomedical & Genomics",
+    "query": "What are the implementation challenges and production verification standards for AlphaFold protein tertiary structure prediction and conformational dynamics?",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "multiple sequence alignment",
+      "evoformer",
+      "invariant point attention",
+      "pLDDT score",
+      "docking"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-184",
+    "category": "Biomedical & Genomics",
+    "query": "What are the implementation challenges and production verification standards for CAR-T cell therapy antigen escape mechanisms in hematologic malignancies?",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "antigen loss",
+      "cd19 modulation",
+      "t-cell exhaustion",
+      "cytokine release syndrome",
+      "bispecific car"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-185",
+    "category": "Biomedical & Genomics",
+    "query": "What are the implementation challenges and production verification standards for mRNA circularization techniques and stability against ribonuclease degradation?",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "group i intron",
+      "circular rna",
+      "half-life extension",
+      "translation persistence",
+      "immunogenicity"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-186",
+    "category": "Biomedical & Genomics",
+    "query": "What are the implementation challenges and production verification standards for Single-cell RNA sequencing (scRNA-seq) trajectory inference and cell lineage tracing?",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "pseudotime",
+      "umap embedding",
+      "monocle",
+      "cellular heterogeneity",
+      "droplet based"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-187",
+    "category": "Biomedical & Genomics",
+    "query": "What are the implementation challenges and production verification standards for Liquid biopsy circulating tumor DNA (ctDNA) detection limits and variant allele frequency?",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "next generation sequencing",
+      "digital pcr",
+      "sensitivity threshold",
+      "early detection",
+      "somatic mutation"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-188",
+    "category": "Biomedical & Genomics",
+    "query": "What are the implementation challenges and production verification standards for Antibody-drug conjugates (ADCs) linker stability and bystander killing effect?",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "cleavable linker",
+      "cytotoxic payload",
+      "dar ratio",
+      "target selectivity",
+      "pharmacokinetics"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-189",
+    "category": "Biomedical & Genomics",
+    "query": "What are the implementation challenges and production verification standards for Microbiome short-chain fatty acids (SCFA) and intestinal barrier integrity?",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "butyrate",
+      "tight junctions",
+      "gpr43 receptor",
+      "inflammation modulation",
+      "gut-brain axis"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-190",
+    "category": "Biomedical & Genomics",
+    "query": "What are the implementation challenges and production verification standards for Neurodegenerative tau protein phosphorylation cascades and amyloid-beta clearance?",
+    "target_source_format": "pubmed",
+    "expected_assertions": [
+      "hyperphosphorylation",
+      "microtubule stability",
+      "glymphatic system",
+      "oligomer toxicity",
+      "astrogliosis"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-191",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "What are the implementation challenges and production verification standards for Kubernetes Horizontal Pod Autoscaler (HPA) algorithm with custom metrics?",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "target metric",
+      "stabilization window",
+      "replica calculation",
+      "metrics server",
+      "prometheus adapter"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-192",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "What are the implementation challenges and production verification standards for Raft consensus state machine replication and leader election edge cases?",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "term number",
+      "log index",
+      "split vote",
+      "heartbeat timeout",
+      "quorum majority"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-193",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "What are the implementation challenges and production verification standards for Zero-copy networking with eBPF and XDP for high-throughput packet filtering?",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "kernel bypass",
+      "ring buffer",
+      "xdp action",
+      "jit compilation",
+      "packet processing latency"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-194",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "What are the implementation challenges and production verification standards for Distributed transaction isolation: Two-phase commit (2PC) vs Saga pattern?",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "coordinator failure",
+      "compensating transaction",
+      "idempotency",
+      "event sourcing",
+      "eventual consistency"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-195",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "What are the implementation challenges and production verification standards for Vector database indexing: HNSW vs IVF-PQ indexing tradeoffs?",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "graph connectivity",
+      "hierarchical layers",
+      "quantization error",
+      "recall at k",
+      "qps throughput"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-196",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "What are the implementation challenges and production verification standards for Microservice service mesh: Envoy proxy sidecar memory overhead and mTLS latency?",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "mutual tls",
+      "handshake latency",
+      "connection pooling",
+      "control plane",
+      "filter chain"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-197",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "What are the implementation challenges and production verification standards for Database sharding and consistent hashing with virtual nodes?",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "hash ring",
+      "rebalancing overhead",
+      "hotspot mitigation",
+      "range partitioning",
+      "data migration"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-198",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "What are the implementation challenges and production verification standards for Kafka event streaming partition rebalancing protocols and consumer lag?",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "cooperative rebalance",
+      "eager protocol",
+      "commit offset",
+      "consumer group",
+      "watermark"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-199",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "What are the implementation challenges and production verification standards for LSM-tree write amplification and compaction algorithms in Key-Value stores?",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "leveled compaction",
+      "size-tiered",
+      "sstables",
+      "bloom filters",
+      "write stall"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-200",
+    "category": "Cloud Infrastructure & Distributed Systems",
+    "query": "What are the implementation challenges and production verification standards for Multi-cloud active-active database replication and conflict resolution (CRDT)?",
+    "target_source_format": "docx",
+    "expected_assertions": [
+      "crdt state",
+      "vector clocks",
+      "network partition",
+      "replication lag",
+      "split brain"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-201",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "What are the implementation challenges and production verification standards for High-frequency trading order book matching engine latency and queue priority?",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "fpga acceleration",
+      "limit order book",
+      "price-time priority",
+      "tick-to-trade",
+      "sub-microsecond"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-202",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "What are the implementation challenges and production verification standards for Black-Scholes-Merton option pricing vs local volatility surface calibration?",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "implied volatility smile",
+      "dupire equation",
+      "greeks calculation",
+      "monte carlo simulation",
+      "pde solver"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-203",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "What are the implementation challenges and production verification standards for Value at Risk (VaR) and Expected Shortfall under Basel IV regulatory frameworks?",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "conditional var",
+      "historical simulation",
+      "confidence level 99",
+      "backtesting exception",
+      "fat tails"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-204",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "What are the implementation challenges and production verification standards for Quantitative factor investing: Momentum, Value, and Quality multi-factor alpha?",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "fama-french",
+      "information ratio",
+      "sharpe ratio",
+      "turnover constraint",
+      "factor correlation"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  },
+  {
+    "id": "TC-205",
+    "category": "Financial Engineering & Quantitative Analytics",
+    "query": "What are the implementation challenges and production verification standards for Pairs trading statistical arbitrage with cointegration tests (Engle-Granger)?",
+    "target_source_format": "csv",
+    "expected_assertions": [
+      "stationarity",
+      "augmented dickey-fuller",
+      "spread z-score",
+      "mean reversion",
+      "half-life"
+    ],
+    "difficulty": "quick",
+    "min_accuracy_threshold": 0.85,
+    "target_latency_s": 8.0,
+    "target_synthesis_speedup": 0.6
+  }
+]

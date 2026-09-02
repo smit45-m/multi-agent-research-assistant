@@ -1,29 +1,60 @@
-from pydantic import BaseModel, Field
+"""
+Pydantic v2 request models for schema validation.
+Strict types, field constraints, validation metadata, and examples.
+"""
 from typing import Literal, Optional, List
+from pydantic import BaseModel, Field
 
 class ResearchQuery(BaseModel):
-    """
-    Request model for initiating a research task.
-    """
-    query: str = Field(..., min_length=3, description="The research question or topic.")
-    depth: Literal['quick', 'standard', 'deep'] = Field('standard', description="Depth of the research.")
-    max_sources: int = Field(10, ge=1, le=50, description="Maximum number of sources to retrieve.")
-    source_filters: Optional[List[str]] = Field(default=None, description="Filters to apply on sources.")
+    """Request model for initiating a multi-agent research workflow."""
+    query: str = Field(
+        ..., 
+        min_length=3, 
+        max_length=1500,
+        description="The research question, technical topic, or hypothesis."
+    )
+    depth: Literal['quick', 'standard', 'deep'] = Field(
+        'standard', 
+        description="Depth of research synthesis and multi-step decomposition."
+    )
+    rag_mode: Literal['hybrid', 'vector', 'bm25', 'rrf', 'multi_query'] = Field(
+        'hybrid',
+        description="RAG retrieval strategy: Hybrid (Dense+BM25+RRF), Dense Vector, BM25, or Multi-Query."
+    )
+    orchestrator: Literal['langgraph', 'crewai'] = Field(
+        'langgraph',
+        description="Multi-agent execution engine: LangGraph state graph or CrewAI process."
+    )
+    max_sources: int = Field(
+        10, 
+        ge=1, 
+        le=50, 
+        description="Maximum number of context sources to retrieve."
+    )
+    source_filters: Optional[List[str]] = Field(
+        default=None, 
+        description="Optional source categories to restrict retrieval (from 15+ supported formats)."
+    )
 
     model_config = {
         "json_schema_extra": {
             "example": {
-                "query": "What are the latest advancements in solid-state batteries?",
+                "query": "What are the latest advancements in solid-state batteries compared to lithium-ion?",
                 "depth": "standard",
-                "max_sources": 5,
-                "source_filters": ["arxiv", "nature"]
+                "rag_mode": "hybrid",
+                "orchestrator": "langgraph",
+                "max_sources": 10,
+                "source_filters": ["pdf", "arxiv", "web"]
             }
         }
     }
 
 class DocumentUploadMetadata(BaseModel):
-    """
-    Metadata for uploaded documents.
-    """
+    """Metadata for uploaded documents."""
     tags: List[str] = Field(default_factory=list, description="Tags associated with the document.")
-    description: Optional[str] = Field(default=None, description="A brief description of the document.")
+    description: Optional[str] = Field(default=None, description="Brief description of the document contents.")
+
+class BenchmarkRunRequest(BaseModel):
+    """Request model for launching the 200+ test cases benchmark suite."""
+    max_cases: Optional[int] = Field(default=None, ge=1, le=300, description="Optional cap on test cases to evaluate.")
+    category: Optional[str] = Field(default=None, description="Optional filter for specific category.")
