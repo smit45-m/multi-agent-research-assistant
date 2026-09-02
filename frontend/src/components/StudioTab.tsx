@@ -1,8 +1,23 @@
 import React, { useState } from 'react';
 import { marked } from 'marked';
 import confetti from 'canvas-confetti';
-import { ArrowRight, Copy, Printer, CheckCircle2, Search, Brain, Scale, PenTool, ExternalLink } from 'lucide-react';
+import {
+  ArrowRight,
+  Copy,
+  Printer,
+  CheckCircle2,
+  Brain,
+  Search,
+  Scale,
+  PenTool,
+  ExternalLink,
+  Map as MapIcon,
+  FileText,
+  Columns,
+  Sparkles,
+} from 'lucide-react';
 import type { ResearchResponse } from '../types';
+import { FlowCanvas } from './canvas/FlowCanvas';
 
 interface StudioTabProps {
   onShowToast: (msg: string) => void;
@@ -16,6 +31,10 @@ export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetri
   const [orchestrator, setOrchestrator] = useState<'langgraph' | 'crewai'>('langgraph');
   const [depth, setDepth] = useState<'quick' | 'standard' | 'deep'>('standard');
   const [results, setResults] = useState<ResearchResponse | null>(null);
+
+  // View Mode: 'canvas' (Living Graph), 'report' (Markdown Document), 'split' (Side-by-side)
+  const [viewMode, setViewMode] = useState<'canvas' | 'report' | 'split'>('canvas');
+  const [activeAgent, setActiveAgent] = useState<'planner' | 'retriever' | 'analyzer' | 'writer' | 'idle'>('idle');
 
   // Stepper state
   const [agentStates, setAgentStates] = useState({
@@ -34,6 +53,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetri
 
     setLoading(true);
     setResults(null);
+    setActiveAgent('planner');
     setPipelineStatus('Status: Processing...');
 
     // Progressive agent feedback
@@ -45,14 +65,16 @@ export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetri
     });
 
     const t1 = setTimeout(() => {
+      setActiveAgent('retriever');
       setAgentStates(prev => ({
         ...prev,
         planner: { status: 'done', badge: 'Done', sub: 'Query decomposed into sub-questions', time: '124 ms' },
         retriever: { status: 'running', badge: 'Searching', sub: 'Hybrid Dense + BM25 + RRF', time: 'Querying' }
       }));
-    }, 400);
+    }, 450);
 
     const t2 = setTimeout(() => {
+      setActiveAgent('analyzer');
       setAgentStates(prev => ({
         ...prev,
         retriever: { status: 'done', badge: 'Done', sub: '15+ sources fused via RRF (k=60)', time: '1180 ms' },
@@ -61,6 +83,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetri
     }, 1500);
 
     const t3 = setTimeout(() => {
+      setActiveAgent('writer');
       setAgentStates(prev => ({
         ...prev,
         analyzer: { status: 'done', badge: 'Done', sub: 'Contradictions checked & clustered', time: '60% faster' },
@@ -89,6 +112,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetri
       clearTimeout(t2);
       clearTimeout(t3);
 
+      setActiveAgent('idle');
       setAgentStates({
         planner: { status: 'done', badge: 'Done', sub: 'Query decomposed into sub-questions', time: '124 ms' },
         retriever: { status: 'done', badge: 'Done', sub: '15+ sources fused via RRF (k=60)', time: '1180 ms' },
@@ -102,7 +126,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetri
       onShowToast('Autonomous research completed successfully!');
 
       try {
-        confetti({ particleCount: 50, spread: 60, origin: { y: 0.85 } });
+        confetti({ particleCount: 60, spread: 70, origin: { y: 0.85 } });
       } catch (e) {
         // Confetti fallback
       }
@@ -110,6 +134,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetri
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
+      setActiveAgent('idle');
       setPipelineStatus('Status: Error');
       onShowToast(`Execution failed: ${err.message || err}`);
     } finally {
@@ -167,171 +192,241 @@ export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetri
           </div>
         </div>
 
-        {/* 4 Autonomous Agents Pipeline Stepper */}
-        <div className="pipeline-card">
-          <div className="pipeline-header">
-            <div className="pipeline-title">
-              <CheckCircle2 size={15} color="var(--brand-primary)" />
-              <span>4 Autonomous Agents Pipeline (CrewAI & LangGraph)</span>
-            </div>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
-              {pipelineStatus}
-            </span>
+        {/* View Switcher: Living Canvas vs Executive Document */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '1.25rem 0 0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--bg-subtle)', padding: '3px', borderRadius: '999px', border: '1px solid var(--border-subtle)' }}>
+            <button
+              className={`segment-btn ${viewMode === 'canvas' ? 'active' : ''}`}
+              style={{ fontSize: '0.75rem', padding: '0.35rem 0.85rem' }}
+              onClick={() => setViewMode('canvas')}
+            >
+              <MapIcon size={13} />
+              <span>Living Map Canvas</span>
+            </button>
+            <button
+              className={`segment-btn ${viewMode === 'report' ? 'active' : ''}`}
+              style={{ fontSize: '0.75rem', padding: '0.35rem 0.85rem' }}
+              onClick={() => setViewMode('report')}
+            >
+              <FileText size={13} />
+              <span>Document View</span>
+            </button>
+            <button
+              className={`segment-btn ${viewMode === 'split' ? 'active' : ''}`}
+              style={{ fontSize: '0.75rem', padding: '0.35rem 0.85rem' }}
+              onClick={() => setViewMode('split')}
+            >
+              <Columns size={13} />
+              <span>Split View</span>
+            </button>
           </div>
 
-          <div className="agents-grid">
-            {/* Planner */}
-            <div className={`agent-pill ${agentStates.planner.status}`}>
-              <div className="agent-pill-top">
-                <span className="agent-name">
-                  <Brain size={13} /> 1. Planner
-                </span>
-                <span className={`agent-badge ${agentStates.planner.status}`}>
-                  {agentStates.planner.badge}
-                </span>
-              </div>
-              <div className="agent-sub">{agentStates.planner.sub}</div>
-              <div className="agent-metric">{agentStates.planner.time}</div>
-            </div>
-
-            {/* Retriever */}
-            <div className={`agent-pill ${agentStates.retriever.status}`}>
-              <div className="agent-pill-top">
-                <span className="agent-name">
-                  <Search size={13} /> 2. Retriever
-                </span>
-                <span className={`agent-badge ${agentStates.retriever.status}`}>
-                  {agentStates.retriever.badge}
-                </span>
-              </div>
-              <div className="agent-sub">{agentStates.retriever.sub}</div>
-              <div className="agent-metric">{agentStates.retriever.time}</div>
-            </div>
-
-            {/* Analyzer */}
-            <div className={`agent-pill ${agentStates.analyzer.status}`}>
-              <div className="agent-pill-top">
-                <span className="agent-name">
-                  <Scale size={13} /> 3. Analyzer
-                </span>
-                <span className={`agent-badge ${agentStates.analyzer.status}`}>
-                  {agentStates.analyzer.badge}
-                </span>
-              </div>
-              <div className="agent-sub">{agentStates.analyzer.sub}</div>
-              <div className="agent-metric">{agentStates.analyzer.time}</div>
-            </div>
-
-            {/* Writer */}
-            <div className={`agent-pill ${agentStates.writer.status}`}>
-              <div className="agent-pill-top">
-                <span className="agent-name">
-                  <PenTool size={13} /> 4. Writer
-                </span>
-                <span className={`agent-badge ${agentStates.writer.status}`}>
-                  {agentStates.writer.badge}
-                </span>
-              </div>
-              <div className="agent-sub">{agentStates.writer.sub}</div>
-              <div className="agent-metric">{agentStates.writer.time}</div>
-            </div>
-          </div>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
+            {results ? `✓ ${results.sources?.length || 0} Grounded Sources Citations` : 'Interactive Multi-Agent Graph Flow'}
+          </span>
         </div>
 
-        {/* Report Output Area */}
-        {results && (
-          <div className="report-wrapper">
-            <div className="report-meta-header">
-              <div className="meta-scores">
-                <div className="score-item">
-                  <span className="label">Response Accuracy</span>
-                  <span className="val green">
-                    {(results.response_accuracy_score * 100).toFixed(1)}%
-                  </span>
-                </div>
-                <div className="score-item">
-                  <span className="label">Turnaround</span>
-                  <span className="val">
-                    {results.processing_time_seconds.toFixed(2)}s
-                  </span>
-                </div>
-                <div className="score-item">
-                  <span className="label">Synthesis Reduction</span>
-                  <span className="val cyan">
-                    {(results.synthesis_speedup_ratio * 100).toFixed(0)}%
-                  </span>
-                </div>
-                <div className="score-item">
-                  <span className="label">Sources Grounded</span>
-                  <span className="val">
-                    {results.sources ? results.sources.length : 0}
-                  </span>
-                </div>
-              </div>
-
-              <div className="report-actions">
-                <button className="btn-secondary" onClick={copyReport}>
-                  <Copy size={13} />
-                  Copy Markdown
-                </button>
-                <button className="btn-secondary" onClick={() => window.print()}>
-                  <Printer size={13} />
-                  Print / PDF
-                </button>
-              </div>
-            </div>
-
-            {/* Rendered Prose Content */}
-            <div
-              className="prose"
-              dangerouslySetInnerHTML={{ __html: marked.parse(results.report || '') as string }}
+        {/* View 1: Living Canvas Graph (MapYourRoad style) */}
+        {(viewMode === 'canvas' || viewMode === 'split') && (
+          <div style={{ marginBottom: viewMode === 'split' ? '1.5rem' : '0' }}>
+            <FlowCanvas
+              query={query}
+              results={results}
+              loading={loading}
+              activeAgent={activeAgent}
+              onExecute={executeResearch}
+              onOpenReport={() => setViewMode('report')}
             />
+          </div>
+        )}
 
-            {/* Sources & Citations Shelf */}
-            <div className="sources-section">
-              <h3>Verified Grounded Citations & Sources ({results.sources?.length || 0})</h3>
-              <div className="sources-grid">
-                {results.sources && results.sources.length > 0 ? (
-                  results.sources.map((s, idx) => (
-                    <div key={idx} className="source-card">
-                      <div className="source-card-top">
-                        <span className="source-tag">{s.source_type}</span>
-                        <span className="source-score">
-                          {(s.relevance_score * 100).toFixed(0)}% Match
-                        </span>
-                      </div>
-                      <div className="source-title" title={s.title || s.url_or_path}>
-                        {s.title || s.url_or_path}
-                      </div>
-                      <div className="source-snippet">
-                        {s.snippet || 'Grounded context excerpt verified by Retriever Agent.'}
-                      </div>
-                      {s.url_or_path && s.url_or_path.startsWith('http') && (
-                        <a
-                          href={s.url_or_path}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.25rem',
-                            fontSize: '0.72rem',
-                            marginTop: '0.4rem',
-                            color: 'var(--accent-cyan)'
-                          }}
-                        >
-                          Visit Source <ExternalLink size={11} />
-                        </a>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <p style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
-                    Grounded internal reference corpus verified.
-                  </p>
-                )}
+        {/* View 2: Executive Markdown Document & Sources */}
+        {(viewMode === 'report' || viewMode === 'split') && (
+          <div>
+            {/* 4 Autonomous Agents Pipeline Stepper */}
+            <div className="pipeline-card" style={{ marginTop: '0', marginBottom: '1.5rem' }}>
+              <div className="pipeline-header">
+                <div className="pipeline-title">
+                  <CheckCircle2 size={15} color="var(--brand-primary)" />
+                  <span>4 Autonomous Agents Pipeline</span>
+                </div>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
+                  {pipelineStatus}
+                </span>
+              </div>
+
+              <div className="agents-grid">
+                {/* Planner */}
+                <div className={`agent-pill ${agentStates.planner.status}`}>
+                  <div className="agent-pill-top">
+                    <span className="agent-name">
+                      <Brain size={13} /> 1. Planner
+                    </span>
+                    <span className={`agent-badge ${agentStates.planner.status}`}>
+                      {agentStates.planner.badge}
+                    </span>
+                  </div>
+                  <div className="agent-sub">{agentStates.planner.sub}</div>
+                  <div className="agent-metric">{agentStates.planner.time}</div>
+                </div>
+
+                {/* Retriever */}
+                <div className={`agent-pill ${agentStates.retriever.status}`}>
+                  <div className="agent-pill-top">
+                    <span className="agent-name">
+                      <Search size={13} /> 2. Retriever
+                    </span>
+                    <span className={`agent-badge ${agentStates.retriever.status}`}>
+                      {agentStates.retriever.badge}
+                    </span>
+                  </div>
+                  <div className="agent-sub">{agentStates.retriever.sub}</div>
+                  <div className="agent-metric">{agentStates.retriever.time}</div>
+                </div>
+
+                {/* Analyzer */}
+                <div className={`agent-pill ${agentStates.analyzer.status}`}>
+                  <div className="agent-pill-top">
+                    <span className="agent-name">
+                      <Scale size={13} /> 3. Analyzer
+                    </span>
+                    <span className={`agent-badge ${agentStates.analyzer.status}`}>
+                      {agentStates.analyzer.badge}
+                    </span>
+                  </div>
+                  <div className="agent-sub">{agentStates.analyzer.sub}</div>
+                  <div className="agent-metric">{agentStates.analyzer.time}</div>
+                </div>
+
+                {/* Writer */}
+                <div className={`agent-pill ${agentStates.writer.status}`}>
+                  <div className="agent-pill-top">
+                    <span className="agent-name">
+                      <PenTool size={13} /> 4. Writer
+                    </span>
+                    <span className={`agent-badge ${agentStates.writer.status}`}>
+                      {agentStates.writer.badge}
+                    </span>
+                  </div>
+                  <div className="agent-sub">{agentStates.writer.sub}</div>
+                  <div className="agent-metric">{agentStates.writer.time}</div>
+                </div>
               </div>
             </div>
+
+            {/* Report Output Area */}
+            {results ? (
+              <div className="report-wrapper" style={{ marginTop: 0 }}>
+                <div className="report-meta-header">
+                  <div className="meta-scores">
+                    <div className="score-item">
+                      <span className="label">Response Accuracy</span>
+                      <span className="val green">
+                        {(results.response_accuracy_score * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="score-item">
+                      <span className="label">Turnaround</span>
+                      <span className="val">
+                        {results.processing_time_seconds.toFixed(2)}s
+                      </span>
+                    </div>
+                    <div className="score-item">
+                      <span className="label">Synthesis Reduction</span>
+                      <span className="val cyan">
+                        {(results.synthesis_speedup_ratio * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <div className="score-item">
+                      <span className="label">Sources Grounded</span>
+                      <span className="val">
+                        {results.sources ? results.sources.length : 0}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="report-actions">
+                    <button className="btn-secondary" onClick={copyReport}>
+                      <Copy size={13} />
+                      Copy Markdown
+                    </button>
+                    <button className="btn-secondary" onClick={() => window.print()}>
+                      <Printer size={13} />
+                      Print / PDF
+                    </button>
+                  </div>
+                </div>
+
+                {/* Rendered Prose Content */}
+                <div
+                  className="prose"
+                  dangerouslySetInnerHTML={{ __html: marked.parse(results.report || '') as string }}
+                />
+
+                {/* Sources & Citations Shelf */}
+                <div className="sources-section">
+                  <h3>Verified Grounded Citations & Sources ({results.sources?.length || 0})</h3>
+                  <div className="sources-grid">
+                    {results.sources && results.sources.length > 0 ? (
+                      results.sources.map((s, idx) => (
+                        <div key={idx} className="source-card">
+                          <div className="source-card-top">
+                            <span className="source-tag">{s.source_type}</span>
+                            <span className="source-score">
+                              {(s.relevance_score * 100).toFixed(0)}% Match
+                            </span>
+                          </div>
+                          <div className="source-title" title={s.title || s.url_or_path}>
+                            {s.title || s.url_or_path}
+                          </div>
+                          <div className="source-snippet">
+                            {s.snippet || 'Grounded context excerpt verified by Retriever Agent.'}
+                          </div>
+                          {s.url_or_path && s.url_or_path.startsWith('http') && (
+                            <a
+                              href={s.url_or_path}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                fontSize: '0.72rem',
+                                marginTop: '0.4rem',
+                                color: 'var(--accent-cyan)',
+                              }}
+                            >
+                              Visit Source <ExternalLink size={11} />
+                            </a>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <p style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
+                        Grounded internal reference corpus verified.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div
+                style={{
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: '16px',
+                  padding: '3rem 2rem',
+                  textAlign: 'center',
+                  color: 'var(--text-tertiary)',
+                }}
+              >
+                <Sparkles size={32} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
+                <h4 style={{ color: 'var(--text-primary)', fontSize: '1rem', fontWeight: 600 }}>No Research Report Yet</h4>
+                <p style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                  Execute a research query above or explore the Living Map Canvas to view the multi-agent graph in action.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -439,7 +534,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetri
         <div className="control-block">
           <div className="control-heading">
             <span>15+ Multi-Format Sources</span>
-            <span style={{ fontSize: '0.65rem', color: 'var(--accent-cyan)' }}>Active</span>
+            <span style={{ fontSize: '0.65rem', color: 'var(--accent-cyan)' }}>Auto-Routed</span>
           </div>
           <div className="format-pills">
             <span className="format-pill active">PDF Docs</span>
@@ -460,7 +555,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetri
         <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', lineHeight: 1.55, borderTop: '1px solid var(--border-subtle)', paddingTop: '0.9rem' }}>
           <strong>Architecture Specs:</strong>
           <div style={{ marginTop: '0.25rem' }}>
-            LangGraph StateGraph & CrewAI 4-agent coordination with Reciprocal Rank Fusion (k=60), parallel map-reduce synthesis, and sub-8s latency SLA.
+            Interactive React Flow infinite canvas, Reciprocal Rank Fusion (k=60), parallel map-reduce synthesis, and sub-8s latency SLA.
           </div>
         </div>
       </div>
