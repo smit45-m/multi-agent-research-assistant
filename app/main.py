@@ -109,13 +109,20 @@ def create_app() -> FastAPI:
         if assets_dir.exists():
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
     
-    # Serve frontend index.html at root
+    # Serve frontend index.html at root with no-cache headers
     @app.get("/", include_in_schema=False)
     async def serve_frontend():
         """Serve the frontend application."""
         index_path = static_dir / "index.html"
         if index_path.exists():
-            return FileResponse(str(index_path))
+            return FileResponse(
+                str(index_path),
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                }
+            )
         return {"message": "Multi-Agent Research Assistant API", "docs": "/docs"}
 
     # Exception Handlers
