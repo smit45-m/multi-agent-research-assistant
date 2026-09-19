@@ -47,6 +47,13 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, theme, 
             200+ Benchmarks
           </button>
           <button
+            className={`segment-btn analyst-nav-btn ${activeTab === 'analyst' ? 'active' : ''}`}
+            onClick={() => setActiveTab('analyst')}
+          >
+            <span className="nav-dot" />
+            Analyst Lab
+          </button>
+          <button
             className={`segment-btn ${activeTab === 'knowledge' ? 'active' : ''}`}
             onClick={() => setActiveTab('knowledge')}
           >

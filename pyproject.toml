@@ -16,6 +16,8 @@ ignore = []
 # Benchmark dataset generator: long lines are data literals (topic tuples
 # with keyphrase lists), intentionally kept one-per-line for reviewability.
 "app/evaluation/generate_benchmark.py" = ["E501"]
+# Markdown briefing templates: emoji-rich table rows read better unwrapped.
+"app/agents/interactive_analyst.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"

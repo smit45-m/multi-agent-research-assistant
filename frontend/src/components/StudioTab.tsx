@@ -32,7 +32,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetri
   const [orchestrator, setOrchestrator] = useState<'langgraph' | 'crewai'>('langgraph');
   const [depth, setDepth] = useState<'quick' | 'standard' | 'deep'>('standard');
   const [autoSelect, setAutoSelect] = useState<boolean>(true);
-  const [autoRationale, setAutoRationale] = useState<string>('Auto-selected Agentic (CRAG) + LangGraph for optimal 92.8% response accuracy on 15+ sources.');
+  const [autoRationale, setAutoRationale] = useState<string>('Auto-selected Agentic (CRAG) + LangGraph based on query shape.');
   const [results, setResults] = useState<ResearchResponse | null>(null);
 
   // View Mode: 'canvas' (Living Graph), 'report' (Markdown Document), 'split' (Side-by-side)
@@ -41,9 +41,9 @@ export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetri
 
   // Stepper state
   const [agentStates, setAgentStates] = useState({
-    planner: { status: 'idle', badge: 'Ready', sub: 'Decomposes query & routes across 15+ sources', time: '-- ms' },
+    planner: { status: 'idle', badge: 'Ready', sub: 'Decomposes query into targeted sub-questions', time: '-- ms' },
     retriever: { status: 'idle', badge: 'Ready', sub: 'Hybrid FAISS + BM25 + Reciprocal Rank Fusion', time: '-- ms' },
-    analyzer: { status: 'idle', badge: 'Ready', sub: 'Cross-verification & 60% synthesis speedup', time: '-- ms' },
+    analyzer: { status: 'idle', badge: 'Ready', sub: 'Cross-verification & measured confidence scoring', time: '-- ms' },
     writer: { status: 'idle', badge: 'Ready', sub: 'Executive report with inline citations', time: '-- ms' },
   });
   const [pipelineStatus, setPipelineStatus] = useState('Status: Idle');
@@ -55,7 +55,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetri
       setRagMode('agentic');
       setOrchestrator('langgraph');
       setDepth('deep');
-      setAutoRationale('Comparative & benchmark query detected: Auto-selected Agentic (CRAG) + LangGraph + Deep depth for multi-hop verification and 92.8% accuracy.');
+      setAutoRationale('Comparative & benchmark query detected: Auto-selected Agentic (CRAG) + LangGraph + Deep depth for multi-hop verification.');
     } else if (q.includes('raft') || q.includes('consensus') || q.includes('crypto') || q.includes('quantum') || q.includes('algorithm')) {
       setRagMode('vectorless');
       setOrchestrator('langgraph');
@@ -129,7 +129,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetri
       setActiveAgent('retriever');
       setAgentStates(prev => ({
         ...prev,
-        planner: { status: 'done', badge: 'Done', sub: 'Query decomposed into sub-questions', time: '124 ms' },
+        planner: { status: 'done', badge: 'Done', sub: 'Query decomposed into sub-questions', time: 'done' },
         retriever: { status: 'running', badge: 'Searching', sub: 'Hybrid Dense + BM25 + RRF', time: 'Querying' }
       }));
     }, 450);
@@ -138,8 +138,8 @@ export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetri
       setActiveAgent('analyzer');
       setAgentStates(prev => ({
         ...prev,
-        retriever: { status: 'done', badge: 'Done', sub: '15+ sources fused via RRF (k=60)', time: '1180 ms' },
-        analyzer: { status: 'running', badge: 'Analyzing', sub: '60% synthesis speedup active', time: 'Synthesizing' }
+        retriever: { status: 'done', badge: 'Done', sub: 'Hybrid retrieval fused via RRF (k=60)', time: 'done' },
+        analyzer: { status: 'running', badge: 'Analyzing', sub: 'Parallel synthesis in flight', time: 'Synthesizing' }
       }));
     }, 1500);
 
@@ -147,7 +147,7 @@ export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetri
       setActiveAgent('writer');
       setAgentStates(prev => ({
         ...prev,
-        analyzer: { status: 'done', badge: 'Done', sub: 'Contradictions checked & clustered', time: '60% faster' },
+        analyzer: { status: 'done', badge: 'Done', sub: 'Evidence graded, confidence measured', time: 'done' },
         writer: { status: 'running', badge: 'Writing', sub: 'Generating grounded citations', time: 'Drafting' }
       }));
     }, 2300);
@@ -175,9 +175,9 @@ export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetri
 
       setActiveAgent('idle');
       setAgentStates({
-        planner: { status: 'done', badge: 'Done', sub: 'Query decomposed into sub-questions', time: '124 ms' },
-        retriever: { status: 'done', badge: 'Done', sub: '15+ sources fused via RRF (k=60)', time: '1180 ms' },
-        analyzer: { status: 'done', badge: 'Done', sub: 'Contradictions checked & clustered', time: '60% faster' },
+        planner: { status: 'done', badge: 'Done', sub: 'Query decomposed into sub-questions', time: data.telemetry ? `${Math.round(data.telemetry.planner_time_ms)} ms` : 'done' },
+        retriever: { status: 'done', badge: 'Done', sub: 'Hybrid retrieval fused via RRF (k=60)', time: data.telemetry ? `${Math.round(data.telemetry.retriever_time_ms)} ms` : 'done' },
+        analyzer: { status: 'done', badge: 'Done', sub: 'Evidence graded, confidence measured', time: data.telemetry ? `${Math.round(data.telemetry.analyzer_time_ms)} ms` : 'done' },
         writer: { status: 'done', badge: 'Done', sub: 'Executive report finalized', time: `${data.processing_time_seconds}s total` },
       });
 

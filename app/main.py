@@ -21,7 +21,7 @@ from app.api.middleware import (
     RequestIDMiddleware,
     configure_cors,
 )
-from app.api.routes import documents, health, research
+from app.api.routes import documents, health, media, research
 from app.api.schemas.responses import ErrorResponse
 from app.config import get_settings
 from app.rag.vector_store import VectorStoreManager
@@ -46,18 +46,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     global vector_store, research_graph
     logger.info("Initializing application resources and multi-agent systems...")
 
-    # Initialize vector store
+    # Initialize vector store (create_app pre-assigns app.state.vector_store,
+    # so initialization must run on whatever store is present — including
+    # loading the persisted index and seeding the bundled reference corpus).
     if getattr(app.state, "vector_store", None) is None:
         if vector_store is None:
             vector_store = VectorStoreManager()
-            vector_store.initialize()
-            try:
-                from app.rag.corpus_loader import ensure_corpus_indexed
-
-                ensure_corpus_indexed(vector_store)
-            except Exception as exc:  # noqa: BLE001 - corpus is optional
-                logger.warning("Reference corpus indexing skipped: %s", exc)
         app.state.vector_store = vector_store
+    try:
+        app.state.vector_store.initialize()
+        from app.rag.corpus_loader import ensure_corpus_indexed
+
+        ensure_corpus_indexed(app.state.vector_store)
+    except Exception as exc:  # noqa: BLE001 - corpus is optional
+        logger.warning("Vector store init / corpus indexing skipped: %s", exc)
 
     # Initialize research graph
     if getattr(app.state, "research_graph", None) is None:
@@ -66,7 +68,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             research_graph.build_graph()
         app.state.research_graph = research_graph
 
-    logger.info("Application started successfully with 6-agent orchestration engine.")
+    logger.info("Application started successfully with 7-agent orchestration engine.")
     yield
 
     logger.info("Shutting down application resources...")
@@ -84,10 +86,11 @@ def create_app() -> FastAPI:
         title="Multi-Agent AI Research Assistant API",
         description=(
             "Production REST API for the Multi-Agent AI Research Assistant. "
-            "Orchestrates 6 autonomous agents (Planner, Retriever, Analyzer, "
-            "Writer, Verifier, Critic) with Hybrid RAG. All quality metrics "
-            "(accuracy, grounding, latency, speedup) are measured at runtime "
-            "by the Verifier/Critic agents and the benchmark harness."
+            "Orchestrates 7 autonomous agents (Planner, Retriever, Analyzer, "
+            "Writer, Verifier, Critic, and the multimodal Interactive "
+            "Analyst) with Hybrid RAG. All quality metrics (accuracy, "
+            "grounding, latency, speedup) are measured at runtime by the "
+            "Verifier/Critic agents and the benchmark harness."
         ),
         version="2.0.0",
         docs_url="/docs",
@@ -117,6 +120,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(research.router)
     app.include_router(documents.router)
+    app.include_router(media.router)
 
     # Serve static frontend files and SPA assets
     static_dir = Path(__file__).parent / "static"

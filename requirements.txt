@@ -24,3 +24,4 @@ ddgs>=9.0.0
 tenacity>=8.0.0
 anyio>=4.0.0
 redis>=5.0.0
+pillow>=10.0.0
