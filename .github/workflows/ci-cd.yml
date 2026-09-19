@@ -27,9 +27,12 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
           
-      - name: Run Ruff Linting & Formatting Checks
-        run: ruff check app/
-        
+      - name: Run Ruff Linting Checks
+        run: ruff check app/ benchmarks/ tests/
+
+      - name: Run Mypy Type Checks
+        run: mypy app/
+
       - name: Run Automated Pytest Suite
         run: pytest tests/ -v --tb=short
         

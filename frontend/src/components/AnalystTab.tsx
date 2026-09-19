@@ -19,6 +19,7 @@ import { startWavRecording, type WavRecorderHandle } from '../lib/wavEncoder';
 
 interface AnalystTabProps {
   onShowToast: (msg: string) => void;
+  onAskResearch?: (question: string) => void;
 }
 
 interface Briefing {
@@ -35,7 +36,7 @@ type InputMode = 'idle' | 'camera' | 'mic';
 const ACCEPTED =
   '.png,.jpg,.jpeg,.webp,.gif,.bmp,.wav,.csv,.tsv,.xlsx,.json,.txt,.md,.py,.js,.ts,.html,.yaml,.xml,.sh';
 
-export const AnalystTab: React.FC<AnalystTabProps> = ({ onShowToast }) => {
+export const AnalystTab: React.FC<AnalystTabProps> = ({ onShowToast, onAskResearch }) => {
   const [mode, setMode] = useState<InputMode>('idle');
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState('');
@@ -457,9 +458,21 @@ export const AnalystTab: React.FC<AnalystTabProps> = ({ onShowToast }) => {
               <div className="followups">
                 <span className="followups-label">💡 Try next</span>
                 {briefing.followups.map((f, i) => (
-                  <span className="followup-chip" key={i}>
+                  <button
+                    className="followup-chip followup-clickable"
+                    key={i}
+                    onClick={() => {
+                      if (onAskResearch) {
+                        onAskResearch(f);
+                        onShowToast('🧠 Sent to Research Studio!');
+                      } else {
+                        navigator.clipboard?.writeText(f);
+                        onShowToast('Copied suggestion to clipboard.');
+                      }
+                    }}
+                  >
                     {f}
-                  </span>
+                  </button>
                 ))}
               </div>
             )}

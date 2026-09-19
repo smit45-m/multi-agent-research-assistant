@@ -18,6 +18,7 @@ export const App: React.FC = () => {
   const [latency, setLatency] = useState<number | undefined>(undefined);
   const [toastMessage, setToastMessage] = useState('');
   const [showToast, setShowToast] = useState(false);
+  const [studioSeedQuery, setStudioSeedQuery] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     const saved = localStorage.getItem('theme');
@@ -92,10 +93,19 @@ export const App: React.FC = () => {
             <StudioTab
               onShowToast={triggerToast}
               onUpdateMetrics={updateMetrics}
+              initialQuery={studioSeedQuery}
             />
           )}
 
-          {activeTab === 'analyst' && <AnalystTab onShowToast={triggerToast} />}
+          {activeTab === 'analyst' && (
+            <AnalystTab
+              onShowToast={triggerToast}
+              onAskResearch={(q) => {
+                setStudioSeedQuery(q);
+                setActiveTab('studio');
+              }}
+            />
+          )}
 
           {activeTab === 'benchmarks' && (
             <BenchmarksTab onShowToast={triggerToast} />

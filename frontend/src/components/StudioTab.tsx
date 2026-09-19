@@ -23,10 +23,15 @@ import { FlowCanvas } from './canvas/FlowCanvas';
 interface StudioTabProps {
   onShowToast: (msg: string) => void;
   onUpdateMetrics: (accuracy: number, latency: number) => void;
+  initialQuery?: string;
 }
 
-export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetrics }) => {
-  const [query, setQuery] = useState('');
+export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetrics, initialQuery }) => {
+  const [query, setQuery] = useState(initialQuery ?? '');
+
+  useEffect(() => {
+    if (initialQuery) setQuery(initialQuery);
+  }, [initialQuery]);
   const [loading, setLoading] = useState(false);
   const [ragMode, setRagMode] = useState<'hybrid' | 'agentic' | 'vectorless' | 'hierarchical' | 'multi_query' | 'vector' | 'bm25'>('hybrid');
   const [orchestrator, setOrchestrator] = useState<'langgraph' | 'crewai'>('langgraph');

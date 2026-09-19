@@ -8,10 +8,11 @@
 ![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED.svg?logo=docker&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-> **Autonomous multi-agent research framework orchestrating 6 specialized
-> agents (Planner, Retriever, Analyzer, Writer, Verifier, Critic) with hybrid
-> Retrieval-Augmented Generation, measured factual grounding, and a fully
-> reproducible evaluation harness.**
+> **Autonomous multi-agent research framework orchestrating 7 specialized
+> agents (Planner, Retriever, Analyzer, Writer, Verifier, Critic, and the
+> multimodal Interactive Analyst) with hybrid Retrieval-Augmented Generation,
+> measured factual grounding, live camera/microphone analysis, and a fully
+> reproducible evaluation harness — behind a 3D-animated editorial web UI.**
 
 ---
 
@@ -80,7 +81,7 @@ graph TD
     User([User / Web UI / REST Client]) --> API[FastAPI + Pydantic v2 Gateway]
     API --> Router[LLM Router in LangChain]
 
-    subgraph MultiAgent [6-Agent Framework: LangGraph StateGraph]
+    subgraph MultiAgent [7-Agent Framework: LangGraph StateGraph]
         Router --> Agent1[1. Planner Agent]
         Agent1 -->|Sub-questions| Agent2[2. Retriever Agent]
         Agent2 -->|Fused context| Agent3[3. Analyzer Agent]
@@ -102,13 +103,20 @@ graph TD
         Hybrid <--> MultiQ[Multi-Query Expansion]
     end
 
+    subgraph Multimodal [Interactive Analyst - Agent 7]
+        API --> Agent7[7. Interactive Analyst]
+        Agent7 <--> Media[media_analyzer: pixels, PCM, cells, text]
+        Agent7 --> Brief[Emoji + table briefing from measured bytes]
+    end
+
     Done --> Report[Research report with grounded citations + measured accuracy]
     Report --> User
+    Brief --> User
 ```
 
 ---
 
-## 🤖 The 6 Agents
+## 🤖 The 7 Agents
 
 1. **🧠 Planner** — decomposes the query into targeted sub-questions and
    selects retrieval strategies based on domain detection.
@@ -128,6 +136,34 @@ graph TD
    only component that assigns an accuracy score.
 6. **🧐 Critic** — scores grounding/structure/evidence, and sends the report
    back to the Writer for at most one revision when quality is below 0.70.
+7. **🧪 Interactive Analyst** — the multimodal agent behind the **Analyst
+   Lab** UI tab. Measures raw input bytes server-side — image pixels
+   (exposure, contrast, sharpness, dominant palette, EXIF), WAV PCM samples
+   (RMS/peak dBFS, speech activity, dominant frequency via FFT), dataset
+   cells (schema, missingness, Pearson correlations), and document text
+   (structure, keywords, reading time) — then presents them as interactive
+   emoji/table/meter Markdown briefings. It formats only; it never invents
+   numbers.
+
+---
+
+## 🧪 Analyst Lab (Multimodal UI)
+
+The web UI's **Analyst Lab** tab feeds Agent 7 with live inputs:
+
+- 📷 **Live photo** — in-browser camera viewfinder (`getUserMedia`), capture
+  → `/api/v1/media/capture/photo` → pixel analysis.
+- 🎙️ **Live audio** — Web Audio recorder with a real-time level meter that
+  encodes **16-bit WAV in the browser**, so the backend measures actual PCM
+  → `/api/v1/media/capture/audio`.
+- 📊 **Any file** — drag-and-drop images, WAV, CSV/TSV/XLSX/JSON datasets,
+  or text/markdown/code → `/api/v1/media/analyze`.
+- 🗃️ **Analyze + index** — `/api/v1/media/analyze/index` additionally chunks
+  text/tabular content into the FAISS knowledge base for grounded follow-up
+  research queries.
+
+Measurement integrity is covered by tests: a 440 Hz synthetic tone must be
+detected at 440 Hz, and perfectly correlated CSV columns must yield r = 1.0.
 
 ---
 
@@ -225,7 +261,13 @@ python benchmarks/load_test.py                # 50-user load test (SLA-gated)
 - `GET /api/v1/documents/` — list indexed documents and chunk statistics.
 - `DELETE /api/v1/documents/{document_id}` — remove a document from the index.
 
-### 3. Health & Monitoring
+### 3. Multimodal Analysis Endpoints (Interactive Analyst)
+- `POST /api/v1/media/analyze` — analyze any supported file (image / WAV / CSV / TSV / XLSX / JSON / text / code); returns measured metrics + interactive Markdown briefing.
+- `POST /api/v1/media/capture/photo` — analyze a live camera capture.
+- `POST /api/v1/media/capture/audio` — analyze a live microphone WAV recording.
+- `POST /api/v1/media/analyze/index` — analyze a text/tabular file **and** index it into the knowledge base (returns `chunks_indexed`).
+
+### 4. Health & Monitoring
 - `GET /health` — liveness.
 - `GET /health/ready` — readiness (vector store integrity, document counts).
 
