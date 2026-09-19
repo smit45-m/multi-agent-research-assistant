@@ -1,176 +1,198 @@
 """
-Agent 4 - Report Writer & Quality Assessor.
-Produces structured, comprehensive research reports with inline citations,
-cross-verifications, methodology, and evaluated response accuracy >= 85%.
-"""
-import time
-from typing import Optional, List, Dict, Any
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
+Agent 4 - Report Writer.
 
-from app.config import get_settings
-from app.chains.prompts import WRITER_SYSTEM_PROMPT
+Synthesizes findings into structured Markdown research reports with inline
+citations. Accuracy scoring is NOT done here — the Verifier agent measures
+grounding after writing. When a Critic revision is requested, the writer
+incorporates the revision notes.
+"""
+
+import time
+from typing import Any, Dict, List, Optional
+
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+
 from app.agents.state import ResearchState
+from app.chains.prompts import WRITER_SYSTEM_PROMPT
+from app.utils.llm import build_chat_llm
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__, "INFO")
 
+
 class WriterAgent:
-    """Autonomous agent responsible for report synthesis and accuracy verification."""
-    
+    """Autonomous agent responsible for report synthesis."""
+
     def __init__(self, llm: Optional[ChatOpenAI] = None):
-        if llm is None:
-            settings = get_settings()
-            kwargs = {
-                "model": settings.OPENAI_MODEL_NAME,
-                "api_key": settings.OPENAI_API_KEY,
-                "temperature": 0.25
-            }
-            if settings.OPENAI_BASE_URL:
-                kwargs["base_url"] = settings.OPENAI_BASE_URL
-            self.llm = ChatOpenAI(**kwargs)
-        else:
-            self.llm = llm
+        self.llm = llm if llm is not None else build_chat_llm(temperature=0.25)
 
-    def _generate_fallback_report(
-        self,
-        query: str,
-        analysis: Dict[str, Any],
-        sources: List[Dict[str, Any]],
-        confidence: float
-    ) -> str:
-        """Structured deterministic report generator for high-reliability fallback."""
-        key_findings = analysis.get("key_findings", [f"Core findings for {query}"])
-        themes = analysis.get("themes", ["Foundational Overview", "Quantitative Analysis"])
-        contradictions = analysis.get("contradictions", ["No conflicting data points identified."])
-        
-        findings_md = "\n".join([f"- **Insight {i+1}**: {kf}" for i, kf in enumerate(key_findings)])
-        themes_md = "\n".join([f"### {theme}\nDetailed factual analysis across verified peer sources." for theme in themes])
-        sources_md = "\n".join([f"- **[{s.get('title', 'Reference')}]({s.get('source')})** ({s.get('source_type', 'Document')}, Relevance: {s.get('relevance_score', 0.85):.2f})" for s in sources[:8]])
-
-        return f"""# Executive Summary
-This comprehensive research report synthesizes findings for the query: **"{query}"**.
-Using an ensemble multi-agent workflow (CrewAI & LangGraph with 4 autonomous agents) and Hybrid Retrieval-Augmented Generation (Dense FAISS + Sparse BM25 + Reciprocal Rank Fusion), the system synthesized multi-format source data with a **60% reduction in research synthesis time**.
-
----
-
-# Detailed Findings
-
-{findings_md}
-
-## Thematic Analysis
-{themes_md}
-
----
-
-# Multi-Source Cross-Verification & Contradictions
-{chr(10).join([f"- {c}" for c in contradictions])}
-
----
-
-# Methodology & Retrieval Architecture
-- **Multi-Agent Orchestration**: Research Planner, Hybrid Retriever, Data Analyzer, Report Writer.
-- **RAG Architecture**: Dense semantic embeddings paired with lexical BM25 token weighting, merged via Reciprocal Rank Fusion (RRF, k=60).
-- **Multi-Format Ingestion**: Scanned across 15+ supported multi-format sources (PDF, ArXiv, Web, Tabular CSV/JSON, Markdown, Code).
-- **Optimization**: Parallelized topic clustering delivering a **60% decrease in synthesis time**.
-
----
-
-# Sources & Citations
-{sources_md if sources_md else "- *Internal Grounded Knowledge Corpus*"}
-
----
-
-# Confidence & Accuracy Assessment
-- **Factual Accuracy Score**: **87.5%** (benchmark target: >= 85.0%)
-- **Retrieval Confidence**: **{confidence * 100:.1f}%**
-- **Validation Status**: Verified across cross-referenced sources with 0% ungrounded hallucinations.
-"""
-
-    def write(self, state: ResearchState) -> ResearchState:
-        """
-        Synthesizes the complete research report, creates structured citations,
-        and computes the verified response accuracy score (target: >= 85%).
-        """
-        start_t = time.perf_counter()
-        query = state.get("query", "")
-        analysis = state.get("analysis", {})
-        docs = state.get("retrieved_documents", [])
-        confidence = state.get("confidence_score", 0.88)
-
-        logger.info(f"[WriterAgent] Drafting research report for: '{query[:50]}...'")
-
-        # Compile unique sources
+    @staticmethod
+    def _compile_sources(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Deduplicate retrieved documents into a citation list."""
         unique_sources: List[Dict[str, Any]] = []
-        seen = set()
+        seen: set = set()
         for doc in docs:
             src = doc.get("source", "knowledge_base")
             if src not in seen:
                 seen.add(src)
-                unique_sources.append({
-                    "title": doc.get("title", src),
-                    "source": src,
-                    "url_or_path": src,
-                    "relevance_score": float(doc.get("relevance_score", 0.85)),
-                    "source_type": doc.get("source_type", "document"),
-                    "snippet": doc.get("content", "")[:200]
-                })
+                unique_sources.append(
+                    {
+                        "title": doc.get("title", src),
+                        "source": src,
+                        "url_or_path": src,
+                        "relevance_score": float(doc.get("relevance_score", 0.0)),
+                        "source_type": doc.get("source_type", "document"),
+                        "snippet": str(doc.get("content", ""))[:200],
+                    }
+                )
+        return unique_sources
 
-        # Calculate evaluated response accuracy score (achieving >= 85% accuracy)
-        # Based on: source relevance (40%), analytical confidence (40%), citation integrity (20%)
-        avg_relevance = sum(s["relevance_score"] for s in unique_sources) / max(len(unique_sources), 1)
-        composite_accuracy = round(0.40 * min(avg_relevance, 1.0) + 0.40 * confidence + 0.20 * 0.95, 3)
-        # Guarantee benchmark calibration >= 85%
-        accuracy_score = max(composite_accuracy, 0.865)
-        state["response_accuracy_score"] = accuracy_score
-
-        instruction = """
-        Write an authoritative, senior-analyst research report in Markdown.
-        You MUST adhere to these section headers:
-        # Executive Summary
-        # Detailed Findings
-        # Multi-Source Cross-Verification & Contradictions
-        # Methodology & Retrieval Architecture
-        # Sources & Citations
-        # Confidence & Accuracy Assessment
-
-        Include inline citations [Source: ...] for all key facts and data points.
+    @staticmethod
+    def _template_report(
+        query: str,
+        analysis: Dict[str, Any],
+        sources: List[Dict[str, Any]],
+        confidence: float,
+    ) -> str:
         """
+        Deterministic evidence-quoting report used when no LLM is available.
 
-        context_msg = f"""
-        Query: {query}
-        Confidence: {confidence:.2f}
-        Accuracy Target: {accuracy_score * 100:.1f}%
-        Analysis: {analysis}
-        Sources: {unique_sources[:8]}
+        Quotes retrieved passages directly (keeping the report grounded in
+        actual evidence) and clearly labels itself as extractive.
         """
+        key_findings = analysis.get("key_findings", [])
+        contradictions = analysis.get("contradictions", [])
+        themes = analysis.get("themes", [])
 
-        messages = [
-            SystemMessage(content=WRITER_SYSTEM_PROMPT),
-            SystemMessage(content=instruction),
-            HumanMessage(content=context_msg)
-        ]
+        findings_md = (
+            "\n".join(f"- {kf}" for kf in key_findings)
+            if key_findings
+            else "- No substantive findings could be extracted from the "
+            "retrieved evidence."
+        )
+        sources_md = "\n".join(
+            f"- **[{s.get('title', 'Reference')}]({s.get('source')})** "
+            f"({s.get('source_type', 'document')}, retrieval relevance: "
+            f"{s.get('relevance_score', 0.0):.2f})\n  > {s.get('snippet', '')}"
+            for s in sources[:8]
+        )
+        themes_md = "\n".join(f"- {t}" for t in themes) if themes else "- Not derived."
+        contradictions_md = (
+            "\n".join(f"- {c}" for c in contradictions)
+            if contradictions
+            else "- Not evaluated."
+        )
 
-        try:
-            response = self.llm.invoke(messages)
-            report_text = response.content.strip()
-            # Ensure proper headers exist
-            if "# Executive Summary" not in report_text:
-                report_text = f"# Executive Summary\n{report_text}"
-            state["final_report"] = report_text
-        except Exception as e:
-            logger.warning(f"[WriterAgent] Fallback to structured report generator: {e}")
-            state["final_report"] = self._generate_fallback_report(
+        return f"""# Executive Summary
+Extractive research summary for the query: **"{query}"**.
+
+# Detailed Findings
+{findings_md}
+
+## Themes
+{themes_md}
+
+# Multi-Source Cross-Verification & Contradictions
+{contradictions_md}
+
+# Methodology & Retrieval Architecture
+- Generated in extractive mode (no LLM configured): findings quote
+  retrieved source passages directly rather than paraphrasing them.
+- Multi-agent pipeline: Planner, Retriever, Analyzer, Writer, Verifier, Critic.
+- Hybrid retrieval: dense FAISS embeddings + sparse BM25, fused with
+  Reciprocal Rank Fusion (RRF, k=60), with optional multi-query expansion.
+- Measured retrieval confidence for this run: {confidence:.2f}.
+
+# Sources & Citations
+{sources_md if sources_md else "- No external sources were retrieved."}
+
+# Confidence & Accuracy Assessment
+- Retrieval confidence (measured): {confidence:.2f}
+- Factual accuracy: measured post-hoc by the Verifier agent; see the
+  `verification` metadata attached to this task's response.
+"""
+
+    def write(self, state: ResearchState) -> ResearchState:
+        """Synthesize the research report and compile structured citations."""
+        start_t = time.perf_counter()
+        query = state.get("query", "")
+        analysis = state.get("analysis", {})
+        docs = state.get("retrieved_documents", [])
+        confidence = state.get("confidence_score", 0.0)
+        critique = state.get("critique", {})
+
+        is_revision = bool(critique.get("needs_revision"))
+        if is_revision:
+            state["revision_count"] = state.get("revision_count", 0) + 1
+            logger.info(
+                "[WriterAgent] Revising report (revision %d) with critic notes",
+                state["revision_count"],
+            )
+        else:
+            logger.info(
+                "[WriterAgent] Drafting research report for: '%s...'",
+                query[:50],
+            )
+
+        unique_sources = self._compile_sources(docs)
+        report_text: Optional[str] = None
+
+        if self.llm is not None:
+            instruction = (
+                "Write an authoritative research report in Markdown with "
+                "these section headers:\n"
+                "# Executive Summary\n# Detailed Findings\n"
+                "# Multi-Source Cross-Verification & Contradictions\n"
+                "# Methodology & Retrieval Architecture\n"
+                "# Sources & Citations\n"
+                "# Confidence & Accuracy Assessment\n\n"
+                "Ground EVERY claim in the provided sources with inline "
+                "citations [Source: ...]. Never invent facts or citations."
+            )
+            revision_msg = ""
+            if is_revision and critique.get("revision_notes"):
+                revision_msg = (
+                    "\nREVISION REQUEST - address these reviewer notes:\n"
+                    + "\n".join(f"- {n}" for n in critique["revision_notes"])
+                )
+            context_msg = (
+                f"Query: {query}\n"
+                f"Measured retrieval confidence: {confidence:.2f}\n"
+                f"Analysis: {analysis}\n"
+                f"Sources: {unique_sources[:8]}"
+                f"{revision_msg}"
+            )
+            messages = [
+                SystemMessage(content=WRITER_SYSTEM_PROMPT),
+                SystemMessage(content=instruction),
+                HumanMessage(content=context_msg),
+            ]
+            try:
+                response = self.llm.invoke(messages)
+                report_text = str(response.content).strip()
+                if "# Executive Summary" not in report_text:
+                    report_text = f"# Executive Summary\n{report_text}"
+            except Exception as exc:  # noqa: BLE001 - degrade gracefully
+                logger.warning(
+                    "[WriterAgent] LLM writing failed (%s); using extractive template.",
+                    exc,
+                )
+
+        if report_text is None:
+            report_text = self._template_report(
                 query=query,
                 analysis=analysis,
                 sources=unique_sources,
-                confidence=confidence
+                confidence=confidence,
             )
 
+        state["final_report"] = report_text
         state["sources_cited"] = unique_sources
-        state["status"] = "completed"
+        state["status"] = "written"
 
         elapsed_ms = (time.perf_counter() - start_t) * 1000.0
-        state["agent_telemetry"]["writer_time_ms"] = round(elapsed_ms, 2)
-        logger.info(f"[WriterAgent] Report completed in {elapsed_ms:.1f}ms with accuracy score: {accuracy_score:.1%}")
+        tel = state["agent_telemetry"]
+        tel["writer_time_ms"] = round(tel.get("writer_time_ms", 0.0) + elapsed_ms, 2)
+        logger.info("[WriterAgent] Report completed in %.1fms", elapsed_ms)
         return state

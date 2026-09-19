@@ -1,0 +1,4 @@
+# Optional: CrewAI execution engine (heavy dependency tree).
+# The default LangGraph engine works without these.
+crewai
+crewai-tools

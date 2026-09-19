@@ -1,63 +1,74 @@
 """
 Production FastAPI application for the Multi-Agent Research Assistant.
-Containerized with Docker and optimized for 50+ concurrent users with sub-8-second latency.
+Containerized with Docker; concurrency behavior is measured by the
+load test in benchmarks/load_test.py rather than asserted here.
 """
-import logging
-import uvicorn
-from pathlib import Path
-from contextlib import asynccontextmanager
-from typing import Optional
 
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any, AsyncIterator, Optional
+
+import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, FileResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.config import get_settings
-from app.utils.logger import setup_logger
-from app.utils.exceptions import (
-    ResearchAssistantError, 
-    AgentError, 
-    RetrievalError, 
-    DocumentProcessingError, 
-    RateLimitError
-)
-from app.api.schemas.responses import ErrorResponse
-from app.api.middleware import APIKeyMiddleware, RateLimitMiddleware, RequestIDMiddleware, configure_cors
-from app.api.routes import health, research, documents
-from app.rag.vector_store import VectorStoreManager
 from app.agents.graph import ResearchGraph
+from app.api.middleware import (
+    APIKeyMiddleware,
+    RateLimitMiddleware,
+    RequestIDMiddleware,
+    configure_cors,
+)
+from app.api.routes import documents, health, research
+from app.api.schemas.responses import ErrorResponse
+from app.config import get_settings
+from app.rag.vector_store import VectorStoreManager
+from app.utils.exceptions import (
+    DocumentProcessingError,
+    RateLimitError,
+    ResearchAssistantError,
+)
+from app.utils.logger import setup_logger
 
-logger = setup_logger("multi_agent_api", logging.INFO)
+logger = setup_logger("multi_agent_api", "INFO")
 settings = get_settings()
 
 # Module-level instances for direct access and testing mock hooks
 vector_store: Optional[VectorStoreManager] = None
 research_graph: Optional[ResearchGraph] = None
 
+
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Lifespan context manager for startup and shutdown events."""
     global vector_store, research_graph
     logger.info("Initializing application resources and multi-agent systems...")
-    
+
     # Initialize vector store
     if getattr(app.state, "vector_store", None) is None:
         if vector_store is None:
             vector_store = VectorStoreManager()
             vector_store.initialize()
+            try:
+                from app.rag.corpus_loader import ensure_corpus_indexed
+
+                ensure_corpus_indexed(vector_store)
+            except Exception as exc:  # noqa: BLE001 - corpus is optional
+                logger.warning("Reference corpus indexing skipped: %s", exc)
         app.state.vector_store = vector_store
-    
+
     # Initialize research graph
     if getattr(app.state, "research_graph", None) is None:
         if research_graph is None:
             research_graph = ResearchGraph(app.state.vector_store)
             research_graph.build_graph()
         app.state.research_graph = research_graph
-    
-    logger.info("Application started successfully with 4-agent orchestration engine.")
+
+    logger.info("Application started successfully with 6-agent orchestration engine.")
     yield
-    
+
     logger.info("Shutting down application resources...")
     if hasattr(app.state, "vector_store") and app.state.vector_store:
         try:
@@ -66,18 +77,21 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Error saving vector store on shutdown: {e}")
     logger.info("Application shutdown complete.")
 
+
 def create_app() -> FastAPI:
     """Creates and configures the FastAPI application."""
     app = FastAPI(
         title="Multi-Agent AI Research Assistant API",
         description=(
-            "Production REST API for Multi-Agent AI Research Assistant. "
-            "Orchestrates 4 autonomous agents (CrewAI & LangGraph) with Hybrid RAG, "
-            "evaluating across 200+ test cases to achieve 85%+ accuracy on 15+ multi-format sources."
+            "Production REST API for the Multi-Agent AI Research Assistant. "
+            "Orchestrates 6 autonomous agents (Planner, Retriever, Analyzer, "
+            "Writer, Verifier, Critic) with Hybrid RAG. All quality metrics "
+            "(accuracy, grounding, latency, speedup) are measured at runtime "
+            "by the Verifier/Critic agents and the benchmark harness."
         ),
-        version="1.0.0",
+        version="2.0.0",
         docs_url="/docs",
-        lifespan=lifespan
+        lifespan=lifespan,
     )
 
     # Initialize app state defaults
@@ -86,16 +100,19 @@ def create_app() -> FastAPI:
         vector_store = VectorStoreManager()
     if research_graph is None:
         research_graph = ResearchGraph(vector_store)
-        
+
     app.state.vector_store = vector_store
     app.state.research_graph = research_graph
 
     # Add middlewares (order matters)
     app.add_middleware(RequestIDMiddleware)
-    app.add_middleware(RateLimitMiddleware, requests_per_minute=settings.MAX_CONCURRENT_REQUESTS * 10)
+    app.add_middleware(
+        RateLimitMiddleware,
+        requests_per_minute=settings.RATE_LIMIT_PER_MINUTE,
+    )
     app.add_middleware(APIKeyMiddleware)
     configure_cors(app)
-    
+
     # Include routers
     app.include_router(health.router)
     app.include_router(research.router)
@@ -108,10 +125,10 @@ def create_app() -> FastAPI:
         assets_dir = static_dir / "assets"
         if assets_dir.exists():
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
-    
+
     # Serve frontend index.html at root with no-cache headers
     @app.get("/", include_in_schema=False)
-    async def serve_frontend():
+    async def serve_frontend() -> Any:
         """Serve the frontend application."""
         index_path = static_dir / "index.html"
         if index_path.exists():
@@ -120,53 +137,56 @@ def create_app() -> FastAPI:
                 headers={
                     "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
                     "Pragma": "no-cache",
-                    "Expires": "0"
-                }
+                    "Expires": "0",
+                },
             )
         return {"message": "Multi-Agent Research Assistant API", "docs": "/docs"}
 
     # Exception Handlers
     @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    async def validation_exception_handler(  # type: ignore[no-untyped-def]
+        request: Request, exc: RequestValidationError
+    ):
         return JSONResponse(
             status_code=422,
             content=ErrorResponse(
-                error="ValidationError",
-                detail=str(exc.errors()),
-                status_code=422
-            ).model_dump()
+                error="ValidationError", detail=str(exc.errors()), status_code=422
+            ).model_dump(),
         )
 
     @app.exception_handler(ResearchAssistantError)
-    async def custom_exception_handler(request: Request, exc: ResearchAssistantError):
+    async def custom_exception_handler(
+        request: Request, exc: ResearchAssistantError
+    ) -> JSONResponse:
         status_code = 500
         if isinstance(exc, RateLimitError):
             status_code = 429
         elif isinstance(exc, DocumentProcessingError):
             status_code = 400
-        
+
         return JSONResponse(
             status_code=status_code,
             content=ErrorResponse(
-                error=exc.__class__.__name__,
-                detail=str(exc),
-                status_code=status_code
-            ).model_dump()
+                error=exc.__class__.__name__, detail=str(exc), status_code=status_code
+            ).model_dump(),
         )
 
     @app.exception_handler(Exception)
-    async def global_exception_handler(request: Request, exc: Exception):
+    async def global_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
         logger.error(f"Unhandled exception: {exc}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content=ErrorResponse(
                 error="Internal Server Error",
                 detail="An unexpected error occurred.",
-                status_code=500
-            ).model_dump()
+                status_code=500,
+            ).model_dump(),
         )
 
     return app
+
 
 app = create_app()
 
@@ -176,5 +196,5 @@ if __name__ == "__main__":
         host=settings.API_HOST,
         port=settings.API_PORT,
         log_level=settings.LOG_LEVEL.lower(),
-        reload=True
+        reload=True,
     )

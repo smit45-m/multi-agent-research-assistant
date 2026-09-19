@@ -1,0 +1,4 @@
+# Optional: local HuggingFace embeddings (pulls PyTorch, ~2GB).
+# Without these the system uses OpenAI embeddings (if a key is set) or a
+# deterministic offline hashing embedder for keyword-level similarity.
+sentence-transformers

@@ -1,42 +1,84 @@
 """
-Multi-step LLM routing workflows and prompt optimization in LangChain.
-Dynamically routes queries across 15+ multi-format sources and configures
-the multi-agent retrieval pipeline for maximum accuracy and efficiency.
+Multi-step routing workflows and prompt configuration.
+
+Routing is implemented as fast deterministic rule-based classification
+(domain keywords + complexity heuristics). It intentionally avoids an LLM
+call: routing runs on every request and must stay in the microsecond range.
 """
-from typing import Dict, Any, List
+
+from typing import Any, List, Optional
+
 from pydantic import BaseModel, Field
 
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__, "INFO")
 
+
 class RoutingDecision(BaseModel):
     """Structured decision produced by the multi-step routing workflow."""
-    domain: str = Field(description="Detected domain: 'academic', 'biomedical', 'financial', 'technical', 'news', 'general'")
-    complexity: str = Field(description="Query complexity level: 'simple', 'moderate', 'complex'")
-    recommended_rag_mode: str = Field(description="Optimal RAG strategy: 'hybrid', 'rrf', 'multi_query', 'vector', 'bm25'")
-    target_source_formats: List[str] = Field(description="List of target source formats to query from the 15+ supported sources")
-    optimized_planner_prompt: str = Field(description="Optimized prompt for the Research Planner agent")
+
+    domain: str = Field(
+        description=(
+            "Detected domain: 'academic', 'biomedical', 'financial', "
+            "'technical', 'news', 'general'"
+        )
+    )
+    complexity: str = Field(
+        description="Query complexity level: 'simple', 'moderate', 'complex'"
+    )
+    recommended_rag_mode: str = Field(
+        description=(
+            "Optimal RAG strategy: 'hybrid', 'rrf', 'multi_query', 'vector', 'bm25'"
+        )
+    )
+    target_source_formats: List[str] = Field(
+        description=(
+            "List of target source formats to query from the supported sources"
+        )
+    )
+    optimized_planner_prompt: str = Field(
+        description="Optimized prompt for the Research Planner agent"
+    )
     requires_multi_query_expansion: bool = Field(default=True)
     estimated_synthesis_time_s: float = Field(default=4.5)
 
+
 class ResearchRouter:
     """
-    Multi-step LLM routing workflow.
-    Analyzes queries, decomposes intent, and selects the optimal multi-source
-    retrieval pipeline with customized, prompt-optimized parameters.
+    Deterministic rule-based routing workflow.
+    Classifies query domain and complexity, then selects target source
+    formats and the recommended RAG retrieval strategy.
     """
-    
-    # 15+ supported source categories
+
+    # Supported source categories
     AVAILABLE_SOURCES = [
-        "pdf", "docx", "txt", "csv", "json", "html", "md", "xlsx",
-        "arxiv", "wikipedia", "pubmed", "news", "web", "code", "configs"
+        "pdf",
+        "docx",
+        "txt",
+        "csv",
+        "json",
+        "html",
+        "md",
+        "xlsx",
+        "arxiv",
+        "wikipedia",
+        "pubmed",
+        "news",
+        "web",
+        "code",
+        "configs",
     ]
 
-    def __init__(self, llm=None):
+    def __init__(self, llm: Any = None) -> None:
         self.llm = llm
 
-    def route(self, query: str, depth: str = "standard", user_sources: List[str] = None) -> RoutingDecision:
+    def route(
+        self,
+        query: str,
+        depth: str = "standard",
+        user_sources: Optional[List[str]] = None,
+    ) -> RoutingDecision:
         """
         Executes the multi-step routing workflow:
         Step 1: Domain & Intent Classification
@@ -45,25 +87,89 @@ class ResearchRouter:
         Step 4: Prompt Optimization Calibration
         """
         q_lower = query.lower()
-        
+
         # Step 1: Intent & Domain Classification
-        if any(term in q_lower for term in ["paper", "study", "arxiv", "theorem", "quantum", "llm", "transformer", "neural"]):
+        if any(
+            term in q_lower
+            for term in [
+                "paper",
+                "study",
+                "arxiv",
+                "theorem",
+                "quantum",
+                "llm",
+                "transformer",
+                "neural",
+            ]
+        ):
             domain = "academic"
             target_sources = ["arxiv", "pdf", "wikipedia", "web"]
             rag_mode = "rrf"
-        elif any(term in q_lower for term in ["clinical", "gene", "disease", "drug", "fda", "medical", "patient", "protein"]):
+        elif any(
+            term in q_lower
+            for term in [
+                "clinical",
+                "gene",
+                "disease",
+                "drug",
+                "fda",
+                "medical",
+                "patient",
+                "protein",
+            ]
+        ):
             domain = "biomedical"
             target_sources = ["pubmed", "arxiv", "pdf", "web"]
             rag_mode = "hybrid"
-        elif any(term in q_lower for term in ["revenue", "stock", "margin", "ebitda", "inflation", "market", "q1", "q2", "q3", "q4", "finance", "gdp"]):
+        elif any(
+            term in q_lower
+            for term in [
+                "revenue",
+                "stock",
+                "margin",
+                "ebitda",
+                "inflation",
+                "market",
+                "q1",
+                "q2",
+                "q3",
+                "q4",
+                "finance",
+                "gdp",
+            ]
+        ):
             domain = "financial"
             target_sources = ["csv", "xlsx", "json", "pdf", "web"]
             rag_mode = "hybrid"
-        elif any(term in q_lower for term in ["code", "api", "function", "architecture", "docker", "fastapi", "python", "kubernetes", "bug"]):
+        elif any(
+            term in q_lower
+            for term in [
+                "code",
+                "api",
+                "function",
+                "architecture",
+                "docker",
+                "fastapi",
+                "python",
+                "kubernetes",
+                "bug",
+            ]
+        ):
             domain = "technical"
             target_sources = ["code", "configs", "md", "txt", "web"]
             rag_mode = "multi_query"
-        elif any(term in q_lower for term in ["today", "latest", "recent", "2025", "2026", "news", "announcement"]):
+        elif any(
+            term in q_lower
+            for term in [
+                "today",
+                "latest",
+                "recent",
+                "2025",
+                "2026",
+                "news",
+                "announcement",
+            ]
+        ):
             domain = "news"
             target_sources = ["news", "web", "html"]
             rag_mode = "hybrid"
@@ -74,7 +180,9 @@ class ResearchRouter:
 
         # Apply user overrides if specified
         if user_sources:
-            target_sources = [s for s in user_sources if s in self.AVAILABLE_SOURCES] or target_sources
+            target_sources = [
+                s for s in user_sources if s in self.AVAILABLE_SOURCES
+            ] or target_sources
 
         # Step 2: Complexity Evaluation
         word_count = len(query.split())
@@ -84,7 +192,7 @@ class ResearchRouter:
             est_time = 6.2
         elif word_count > 7 or depth == "standard":
             complexity = "moderate"
-            requires_multi_query = (rag_mode in ["rrf", "multi_query"])
+            requires_multi_query = rag_mode in ["rrf", "multi_query"]
             est_time = 4.5
         else:
             complexity = "simple"
@@ -95,8 +203,10 @@ class ResearchRouter:
         optimized_prompt = (
             f"Role: Expert {domain.capitalize()} Research Planner. "
             f"Query Complexity: {complexity}. "
-            f"Prioritize verifiable factual cross-referencing across target source formats: {', '.join(target_sources)}. "
-            f"Enforce explicit atomic sub-questions, elimination of speculative claims, and strict attribution."
+            f"Prioritize verifiable factual cross-referencing across "
+            f"target source formats: {', '.join(target_sources)}. "
+            "Enforce explicit atomic sub-questions, elimination of "
+            "speculative claims, and strict attribution."
         )
 
         decision = RoutingDecision(
@@ -106,7 +216,10 @@ class ResearchRouter:
             target_source_formats=target_sources,
             optimized_planner_prompt=optimized_prompt,
             requires_multi_query_expansion=requires_multi_query,
-            estimated_synthesis_time_s=est_time
+            estimated_synthesis_time_s=est_time,
         )
-        logger.info(f"Routing workflow completed: Domain={domain}, RAG_Mode={rag_mode}, Sources={len(target_sources)}")
+        logger.info(
+            f"Routing workflow completed: Domain={domain}, "
+            f"RAG_Mode={rag_mode}, Sources={len(target_sources)}"
+        )
         return decision

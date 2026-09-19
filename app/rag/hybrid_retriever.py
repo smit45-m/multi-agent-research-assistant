@@ -7,22 +7,26 @@ Advanced Hybrid Retrieval module combining:
 5. Vectorless Knowledge Graph Retrieval
 6. Agentic Corrective RAG (CRAG & Self-RAG)
 """
+
 import math
 import re
-from typing import List, Dict, Any, Optional
 from collections import defaultdict
+from typing import Any, Dict, List, Optional
+
 from langchain_core.documents import Document
 
-from app.utils.logger import setup_logger
 from app.rag.vector_store import VectorStoreManager
+from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__, "INFO")
+
 
 class BM25Retriever:
     """
     Lightweight, robust, zero-dependency BM25 retriever for sparse lexical search.
     Handles exact keyword matching, token frequencies, and inverse document frequencies.
     """
+
     def __init__(self, k1: float = 1.5, b: float = 0.75):
         self.k1 = k1
         self.b = b
@@ -59,12 +63,16 @@ class BM25Retriever:
             for token in freq.keys():
                 df[token] += 1
 
-        self.avgdl = sum(self.doc_lens) / self.corpus_size if self.corpus_size > 0 else 0.0
+        self.avgdl = (
+            sum(self.doc_lens) / self.corpus_size if self.corpus_size > 0 else 0.0
+        )
 
         # Calculate standard Robertson-Spärck Jones IDF
         self.idf = {}
         for token, doc_count in df.items():
-            self.idf[token] = math.log((self.corpus_size - doc_count + 0.5) / (doc_count + 0.5) + 1.0)
+            self.idf[token] = math.log(
+                (self.corpus_size - doc_count + 0.5) / (doc_count + 0.5) + 1.0
+            )
 
     def search(self, query: str, top_k: int = 5) -> List[Document]:
         """Scores and returns top-k documents matching the query using BM25."""
@@ -83,21 +91,26 @@ class BM25Retriever:
                 if token in freq:
                     f = freq[token]
                     idf_val = self.idf.get(token, 0.1)
-                    score_term = idf_val * (f * (self.k1 + 1.0)) / (f + self.k1 * len_norm)
+                    score_term = (
+                        idf_val * (f * (self.k1 + 1.0)) / (f + self.k1 * len_norm)
+                    )
                     scores[i] += score_term
 
         # Rank indices by score descending
-        ranked_indices = sorted(range(self.corpus_size), key=lambda i: scores[i], reverse=True)
-        results = []
+        ranked_indices = sorted(
+            range(self.corpus_size), key=lambda i: scores[i], reverse=True
+        )
+        results: List[Document] = []
         for idx in ranked_indices[:top_k]:
             if scores[idx] > 0.0 or len(results) == 0:
                 doc_copy = Document(
                     page_content=self.documents[idx].page_content,
-                    metadata=dict(self.documents[idx].metadata)
+                    metadata=dict(self.documents[idx].metadata),
                 )
                 doc_copy.metadata["bm25_score"] = round(scores[idx], 4)
                 results.append(doc_copy)
         return results
+
 
 class HybridRetriever:
     """
@@ -109,6 +122,7 @@ class HybridRetriever:
     - Vectorless Knowledge Graph RAG
     - Agentic Corrective RAG (CRAG) & Self-RAG
     """
+
     def __init__(self, vector_store: VectorStoreManager, rrf_k: int = 60):
         self.vector_store = vector_store
         self.rrf_k = rrf_k
@@ -120,8 +134,11 @@ class HybridRetriever:
     def _get_vectorless_rag(self) -> Any:
         if self._vectorless_rag is None:
             from app.rag.advanced_rag import VectorlessRAG
+
             self._vectorless_rag = VectorlessRAG()
-            broad_docs = self.vector_store.similarity_search("", k=max(self.vector_store.get_document_count(), 50))
+            broad_docs = self.vector_store.similarity_search(
+                "", k=max(self.vector_store.get_document_count(), 50)
+            )
             if broad_docs:
                 self._vectorless_rag.fit(broad_docs)
         return self._vectorless_rag
@@ -129,6 +146,7 @@ class HybridRetriever:
     def _get_agentic_rag(self) -> Any:
         if self._agentic_rag is None:
             from app.rag.advanced_rag import AgenticRAG
+
             self._agentic_rag = AgenticRAG(self, self._get_vectorless_rag())
         return self._agentic_rag
 
@@ -142,31 +160,41 @@ class HybridRetriever:
                 self._synced_doc_count = total
                 if self._vectorless_rag is not None:
                     self._vectorless_rag.fit(broad_docs)
-                logger.info(f"BM25 and Vectorless indexes synced with {len(broad_docs)} documents.")
+                logger.info(
+                    f"BM25 and Vectorless indexes synced with "
+                    f"{len(broad_docs)} documents."
+                )
 
     def generate_multi_queries(self, query: str) -> List[str]:
         """
-        Expands original query into multiple semantic sub-queries to broaden search coverage.
+        Expands original query into multiple semantic sub-queries to
+        broaden search coverage.
         """
         clean_q = query.strip()
         queries = [clean_q]
-        
-        if "vs" in clean_q.lower() or "compare" in clean_q.lower() or "difference" in clean_q.lower():
+
+        if (
+            "vs" in clean_q.lower()
+            or "compare" in clean_q.lower()
+            or "difference" in clean_q.lower()
+        ):
             queries.append(f"advantages disadvantages comparison {clean_q}")
             queries.append(f"technical benchmarks performance {clean_q}")
-        elif "how to" in clean_q.lower() or "architecture" in clean_q.lower() or "workflow" in clean_q.lower():
+        elif (
+            "how to" in clean_q.lower()
+            or "architecture" in clean_q.lower()
+            or "workflow" in clean_q.lower()
+        ):
             queries.append(f"best practices system design {clean_q}")
             queries.append(f"implementation specifications {clean_q}")
         else:
             queries.append(f"key concepts overview analysis {clean_q}")
             queries.append(f"state of the art technical details {clean_q}")
-            
+
         return queries
 
     def reciprocal_rank_fusion(
-        self,
-        ranked_lists: List[List[Document]],
-        top_k: int = 8
+        self, ranked_lists: List[List[Document]], top_k: int = 8
     ) -> List[Document]:
         """
         Merges multiple ranked document lists into a single consolidated ranking
@@ -178,18 +206,22 @@ class HybridRetriever:
 
         for ranked_list in ranked_lists:
             for rank, doc in enumerate(ranked_list, start=1):
-                doc_key = f"{doc.metadata.get('source_path', doc.metadata.get('source', 'unknown'))}:{doc.page_content[:150]}"
+                src_key = doc.metadata.get(
+                    "source_path", doc.metadata.get("source", "unknown")
+                )
+                doc_key = f"{src_key}:{doc.page_content[:150]}"
                 rrf_scores[doc_key] += 1.0 / (self.rrf_k + rank)
                 if doc_key not in doc_map:
                     doc_map[doc_key] = doc
 
-        sorted_keys = sorted(rrf_scores.keys(), key=lambda k: rrf_scores[k], reverse=True)
+        sorted_keys = sorted(
+            rrf_scores.keys(), key=lambda k: rrf_scores[k], reverse=True
+        )
         fused_docs = []
         for key in sorted_keys[:top_k]:
             doc = doc_map[key]
             doc_copy = Document(
-                page_content=doc.page_content,
-                metadata=dict(doc.metadata)
+                page_content=doc.page_content, metadata=dict(doc.metadata)
             )
             doc_copy.metadata["rrf_score"] = round(rrf_scores[key], 5)
             fused_docs.append(doc_copy)
@@ -197,10 +229,7 @@ class HybridRetriever:
         return fused_docs
 
     def retrieve(
-        self,
-        query: str,
-        mode: str = "hybrid",
-        top_k: int = 6
+        self, query: str, mode: str = "hybrid", top_k: int = 6
     ) -> List[Document]:
         """
         Executes retrieval according to the chosen RAG mode:
@@ -219,22 +248,30 @@ class HybridRetriever:
         if mode == "agentic":
             agentic_engine = self._get_agentic_rag()
             docs, _ = agentic_engine.execute_agentic_rag(query, top_k=top_k)
-            return docs
+            return list(docs)
 
         # 2. Vectorless RAG
         if mode == "vectorless":
             vectorless_engine = self._get_vectorless_rag()
-            return vectorless_engine.search(query, top_k=top_k)
+            return list(vectorless_engine.search(query, top_k=top_k))
 
         # 3. Hierarchical Parent-Child RAG
         if mode == "hierarchical":
             # Retrieve targeted child chunks then expand to parent context
             child_results = self.bm25.search(query, top_k=top_k)
-            parent_ids = {d.metadata.get("parent_id") for d in child_results if "parent_id" in d.metadata}
+            parent_ids = {
+                d.metadata.get("parent_id")
+                for d in child_results
+                if "parent_id" in d.metadata
+            }
             if parent_ids:
                 # Fetch full parent chunks if indexed
-                broad_docs = self.vector_store.similarity_search("", k=max(self.vector_store.get_document_count(), 50))
-                parent_docs = [d for d in broad_docs if d.metadata.get("parent_id") in parent_ids]
+                broad_docs = self.vector_store.similarity_search(
+                    "", k=max(self.vector_store.get_document_count(), 50)
+                )
+                parent_docs = [
+                    d for d in broad_docs if d.metadata.get("parent_id") in parent_ids
+                ]
                 if parent_docs:
                     return parent_docs[:top_k]
             return child_results[:top_k]

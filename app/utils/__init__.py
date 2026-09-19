@@ -2,15 +2,15 @@
 Utility modules for the application, including logging and custom exceptions.
 """
 
-from .logger import setup_logger
 from .exceptions import (
-    ResearchAssistantError,
     AgentError,
-    RetrievalError,
-    DocumentProcessingError,
     ConfigurationError,
-    RateLimitError
+    DocumentProcessingError,
+    RateLimitError,
+    ResearchAssistantError,
+    RetrievalError,
 )
+from .logger import setup_logger
 
 __all__ = [
     "setup_logger",
@@ -19,5 +19,5 @@ __all__ = [
     "RetrievalError",
     "DocumentProcessingError",
     "ConfigurationError",
-    "RateLimitError"
+    "RateLimitError",
 ]
