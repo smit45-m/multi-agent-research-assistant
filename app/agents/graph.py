@@ -74,8 +74,15 @@ class ResearchGraph:
             has_attachments=bool(options.get("attachments") or options.get("attachment_ids"))
         )
         effective_rag = rag_mode if rag_mode != "auto" else meta_config["selected_rag_mode"]
-        effective_engine = orchestrator if orchestrator != "auto" else meta_config["selected_orchestrator"]
         effective_mode = meta_config["resolved_mode"]
+        if effective_mode in ("fast", "quick") or options.get("mode") in ("fast", "quick"):
+            effective_engine = "direct"
+        elif effective_mode == "privacy" or options.get("privacy_mode"):
+            effective_engine = "direct" if orchestrator == "auto" else orchestrator
+        elif orchestrator != "auto":
+            effective_engine = orchestrator
+        else:
+            effective_engine = meta_config["selected_orchestrator"]
 
         route = ResearchRouter().execution_plan(
             query, mode=effective_mode, rag_mode=effective_rag,
@@ -98,7 +105,7 @@ class ResearchGraph:
         state["orchestrator"] = route["selected_orchestrator"]
         state["privacy_mode"] = (state["mode"] == "privacy" or options.get("privacy_mode", False))
         state["offline"] = self.offline or options.get("offline", False)
-        state["deadline"] = time.monotonic() + (max(18.0, route.get("budget_seconds", 25.0)) if state["mode"] in ("fast", "quick") else max(90.0, route.get("budget_seconds", 120.0)))
+        state["deadline"] = time.monotonic() + (4.9 if state["mode"] in ("fast", "quick") else max(90.0, route.get("budget_seconds", 120.0)))
         state["routing_metadata"] = route
         state["meta_orchestration"] = meta_config
         state["warnings"].extend(route["warnings"])

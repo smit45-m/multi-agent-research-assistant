@@ -112,7 +112,7 @@ def perform_research_task(
                 response_accuracy_score=state.get("response_accuracy_score", 0.875),
                 synthesis_speedup_ratio=state.get("synthesis_speedup_ratio", 0.60),
                 processing_time_seconds=round(processing_time, 2),
-                orchestrator=orchestrator,
+                orchestrator=state.get("orchestrator", orchestrator),
                 telemetry=tel,
                 created_at=datetime.now(timezone.utc)
             )
@@ -274,7 +274,7 @@ def execute_research_sync(
                 response_accuracy_score=max(acc, 0.85),
                 synthesis_speedup_ratio=speedup,
                 processing_time_seconds=round(elapsed, 2),
-                orchestrator=query_obj.orchestrator,
+                orchestrator=state.get("orchestrator", query_obj.orchestrator),
                 mode=query_obj.mode,
                 answer_origin=state.get("answer_origin", "completed"),
                 warnings=state.get("warnings", []),

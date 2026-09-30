@@ -69,19 +69,21 @@ class BoundedLLM:
             elif self.settings.gemini_configured:
                 # Optimized candidate order: 200 OK fast models first, avoid 503/404 traps
                 if self.mode in ("fast", "quick"):
-                    fast_pool = ["gemini-3.5-flash-lite", "gemini-flash-lite-latest"]
-                    output_tokens = min(max_tokens, getattr(self.settings, "FAST_MODE_MAX_OUTPUT_TOKENS", 400))
-                    default_timeout = 3.5
+                    fast_pool = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite"]
+                    output_tokens = min(max_tokens, getattr(self.settings, "FAST_MODE_MAX_OUTPUT_TOKENS", 280))
+                    default_timeout = 3.8
+                    candidates = ["gemini-flash-lite-latest", self.model, "gemini-3.5-flash-lite"]
                 elif self.mode in ("research", "deep"):
                     fast_pool = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-flash-lite-latest"]
                     output_tokens = max(max_tokens, 3000)
                     default_timeout = 18.0
+                    candidates = [self.model] + fast_pool
                 else:
-                    fast_pool = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
+                    fast_pool = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite"]
                     output_tokens = max(max_tokens, 1500)
                     default_timeout = 8.0
+                    candidates = [self.model] + fast_pool
                 
-                candidates = [self.model] + fast_pool
                 candidate_models = list(dict.fromkeys([m for m in candidates if m]))
                 
                 headers = {

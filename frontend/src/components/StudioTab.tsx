@@ -33,7 +33,7 @@ import { api, errorMessage, safeUrl } from '../api';
 import type { ResearchResponse, DocumentResponse } from '../types';
 
 type Mode = 'hybrid' | 'agentic' | 'vectorless' | 'hierarchical' | 'multi_query' | 'vector' | 'bm25';
-type Engine = 'langgraph' | 'crewai';
+type Engine = 'auto' | 'langgraph' | 'crewai' | 'direct';
 type SpeedMode = 'fast' | 'research' | 'privacy';
 
 const examples = [
@@ -76,7 +76,7 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
   const [error, setError] = useState('');
   const [elapsed, setElapsed] = useState(0);
   const [ragMode, setRagMode] = useState<Mode>('hybrid');
-  const [engine, setEngine] = useState<Engine>('langgraph');
+  const [engine, setEngine] = useState<Engine>('auto');
   const [speedMode, setSpeedMode] = useState<SpeedMode>('fast');
   const [tab, setTab] = useState<'report' | 'sources' | 'activity'>('report');
   const [copied, setCopied] = useState(false);
@@ -159,7 +159,7 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
           query: query.trim(),
           mode: speedMode,
           rag_mode: ragMode,
-          orchestrator: engine,
+          orchestrator: speedMode === 'fast' ? 'direct' : (speedMode === 'privacy' ? 'direct' : engine),
           privacy_mode: speedMode === 'privacy',
         }),
       });
@@ -432,7 +432,7 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
                 <span><Clock3 size={14} /> {result.processing_time_seconds.toFixed(2)}s</span>
                 <span><BookOpen size={14} /> {result.sources?.length || 0} sources returned</span>
                 <span><Zap size={14} /> {result.mode === 'privacy' || speedMode === 'privacy' ? '🔒 Air-Gapped Local Mode' : speedMode === 'fast' ? '⚡ Fast Mode (<5s)' : '🔬 Deep Research'}</span>
-                <span>Engine: {result.mode === 'privacy' || speedMode === 'privacy' ? 'Local RAG (0 Cloud Egress)' : result.orchestrator}</span>
+                <span>Engine: {result.mode === 'privacy' || speedMode === 'privacy' ? 'Local RAG (0 Cloud Egress)' : result.orchestrator === 'direct' ? 'Jev System-1 Direct' : result.orchestrator}</span>
                 {result.response_accuracy_score && (
                   <span>Accuracy: {(result.response_accuracy_score * 100).toFixed(1)}%</span>
                 )}
@@ -611,17 +611,19 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
                 <div className="field">
                   <label htmlFor="engine">Orchestration engine</label>
                   <select id="engine" value={engine} onChange={event => setEngine(event.target.value as Engine)}>
+                    <option value="auto">Auto (Jev System-1 Optimized)</option>
+                    <option value="direct">Direct (&lt;5s Low Latency)</option>
                     <option value="langgraph">LangGraph</option>
                     <option value="crewai">CrewAI</option>
                   </select>
-                  <p>The backend automatically orchestrates between LangGraph and CrewAI.</p>
+                  <p>The backend automatically orchestrates between LangGraph, CrewAI, and Jev Direct.</p>
                 </div>
                 <button
                   type="button"
                   className="text-button"
                   onClick={() => {
                     setRagMode('hybrid');
-                    setEngine('langgraph');
+                    setEngine('auto');
                     setSpeedMode('fast');
                   }}
                 >

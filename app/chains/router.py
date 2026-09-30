@@ -73,23 +73,28 @@ class ResearchRouter:
                 reason.append("Hybrid is the general-purpose retrieval default")
         else:
             reason.append(f"User selected {rag_mode} retrieval")
-        engine = ("direct" if selected_mode == "fast" else "langgraph") if orchestrator == "auto" else orchestrator
+        if selected_mode in ("fast", "quick"):
+            engine = "direct"
+        elif selected_mode == "privacy":
+            private = True
+            fresh = False
+            engine = "direct" if orchestrator == "auto" else orchestrator
+        elif orchestrator == "auto":
+            engine = "langgraph"
+        else:
+            engine = orchestrator
         warnings = []
         if engine == "crewai":
             engine = "langgraph"
             warnings.append("CrewAI is not used by the bounded evidence pipeline; executed LangGraph instead.")
-        if selected_mode == "privacy":
-            private = True
-            fresh = False
-            engine = "direct" if orchestrator == "auto" else orchestrator
         budgets = {
-            "fast": settings.FAST_BUDGET_SECONDS,
+            "fast": 4.8,
             "balanced": settings.BALANCED_BUDGET_SECONDS,
             "research": settings.RESEARCH_BUDGET_SECONDS,
             "privacy": getattr(settings, "PRIVACY_BUDGET_SECONDS", 10.0),
         }
         caps = {
-            "fast": (3, 1, 1, 750),
+            "fast": (3, 1, 1, 600),
             "balanced": (8, 2, 1, 3500),
             "research": (14, 4, 2, 4200),
             "privacy": (12, 2, 1, 3500),
