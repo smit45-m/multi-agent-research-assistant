@@ -17,7 +17,7 @@ interface FlowCanvasProps {
   query: string;
   results: ResearchResponse | null;
   loading: boolean;
-  activeAgent: 'planner' | 'retriever' | 'analyzer' | 'writer' | 'idle';
+  activeAgent: 'planner' | 'retriever' | 'analyzer' | 'writer' | 'factChecker' | 'supervisor' | 'idle';
   onExecute: () => void;
   onOpenReport: () => void;
 }
@@ -230,7 +230,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   ], [loading, activeAgent, plannerStatus, retrieverStatus, analyzerStatus, writerStatus, reportStatus, results]);
 
   return (
-    <div style={{ width: '100%', height: 'calc(100vh - 220px)', minHeight: '620px', position: 'relative', borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--border-default)', background: '#07090e' }}>
+    <div style={{ width: '100%', height: 'calc(100vh - 220px)', minHeight: '620px', position: 'relative', borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--border-default)', background: 'var(--bg-subtle)' }}>
       {/* Floating Canvas Top HUD */}
       <div
         style={{

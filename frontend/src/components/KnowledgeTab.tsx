@@ -1,165 +1,74 @@
-import React, { useState, useEffect } from 'react';
-import { UploadCloud, Trash2, FileText, CheckCircle2 } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { BookOpen, CheckCircle2, FileText, LoaderCircle, RefreshCw, Search, Trash2, UploadCloud } from 'lucide-react';
+import { api, errorMessage } from '../api';
 import type { DocumentResponse, DocumentListResponse } from '../types';
 
-interface KnowledgeTabProps {
-  onShowToast: (msg: string) => void;
-}
-
-export const KnowledgeTab: React.FC<KnowledgeTabProps> = ({ onShowToast }) => {
+const formats = ['pdf', 'docx', 'txt', 'csv', 'json', 'html', 'htm', 'md', 'xlsx', 'tsv', 'py', 'js', 'ts', 'sh', 'yaml', 'yml', 'xml'];
+interface Props { onShowToast: (message: string) => void }
+export function KnowledgeTab({ onShowToast }: Props) {
   const [docs, setDocs] = useState<DocumentResponse[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState('');
+  const [error, setError] = useState('');
   const [dragOver, setDragOver] = useState(false);
+  const [search, setSearch] = useState('');
+  const [pendingDelete, setPendingDelete] = useState<DocumentResponse | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const uploadLock = useRef(false);
 
-  const fetchDocuments = async () => {
-    try {
-      const res = await fetch('/api/v1/documents/');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: DocumentListResponse = await res.json();
-      setDocs(data.documents || []);
-    } catch (err: any) {
-      onShowToast('Failed to load documents: ' + err.message);
-    }
-  };
-
-  const uploadFile = async (file: File) => {
-    setLoading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-
-    onShowToast(`Uploading & indexing ${file.name}...`);
-    try {
-      const res = await fetch('/api/v1/documents/upload', {
-        method: 'POST',
-        body: formData
-      });
-      if (!res.ok) throw new Error('Upload failed');
-      onShowToast(`Successfully indexed ${file.name} across hybrid RAG!`);
-      fetchDocuments();
-    } catch (err: any) {
-      onShowToast('Upload error: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const deleteDocument = async (id: string) => {
-    try {
-      await fetch(`/api/v1/documents/${id}`, { method: 'DELETE' });
-      onShowToast('Document removed from vector index.');
-      fetchDocuments();
-    } catch (err: any) {
-      onShowToast('Deletion error');
-    }
-  };
-
-  useEffect(() => {
-    fetchDocuments();
+  const refresh = useCallback(async () => {
+    setLoading(true); setError('');
+    try { const data = await api<DocumentListResponse>('/api/v1/documents/'); setDocs(data.documents || []); }
+    catch (err) { setError(errorMessage(err)); }
+    finally { setLoading(false); }
   }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    api<DocumentListResponse>('/api/v1/documents/', { signal: controller.signal })
+      .then(data => setDocs(data.documents || []))
+      .catch(err => { if (!controller.signal.aborted) setError(errorMessage(err)); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, []);
+  useEffect(() => { if (pendingDelete) dialog.current?.showModal(); else dialog.current?.close(); }, [pendingDelete]);
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      uploadFile(e.dataTransfer.files[0]);
+  async function uploadFiles(files: File[]) {
+    if (uploadLock.current || !files.length) return;
+    uploadLock.current = true; setError('');
+    const failures: string[] = []; let count = 0;
+    for (const [index, file] of files.entries()) {
+      const extension = file.name.split('.').pop()?.toLowerCase() || '';
+      if (!formats.includes(extension)) { failures.push(`${file.name}: unsupported format.`); continue; }
+      if (!file.size || file.size > 20 * 1024 * 1024) { failures.push(`${file.name}: choose a non-empty file under 20 MB.`); continue; }
+      setUploading(`${index + 1} of ${files.length} · ${file.name}`);
+      const form = new FormData(); form.append('file', file);
+      try { await api<DocumentResponse>('/api/v1/documents/upload', { method: 'POST', body: form }); count++; }
+      catch (err) { failures.push(`${file.name}: ${errorMessage(err)}`); }
     }
-  };
-
-  return (
-    <div className="table-card" style={{ padding: '1.6rem' }}>
-      <div style={{ marginBottom: '1.25rem' }}>
-        <h3 style={{ fontSize: '1.05rem', fontWeight: 700 }}>
-          15+ Multi-Format Document Ingestion & Chunking
-        </h3>
-        <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.2rem' }}>
-          Direct local indexing into Hybrid FAISS vector store and BM25 sparse index.
-        </p>
-      </div>
-
-      {/* Upload Box */}
-      <div
-        className={`upload-dropzone ${dragOver ? 'dragover' : ''}`}
-        onDragEnter={(e) => { e.preventDefault(); setDragOver(true); }}
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={handleDrop}
-        onClick={() => document.getElementById('doc-file-input')?.click()}
-      >
-        <UploadCloud size={34} style={{ color: 'var(--brand-primary)', marginBottom: '0.5rem' }} />
-        <div style={{ fontSize: '0.88rem', fontWeight: 600 }}>
-          {loading ? 'Uploading & chunking document...' : 'Drag and drop files here, or click to browse'}
-        </div>
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '0.3rem' }}>
-          Supported: .pdf, .docx, .csv, .json, .html, .md, .xlsx, .tsv, .py, .yaml, .xml
-        </div>
-        <input
-          type="file"
-          id="doc-file-input"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            if (e.target.files && e.target.files.length > 0) {
-              uploadFile(e.target.files[0]);
-            }
-          }}
-        />
-      </div>
-
-      {/* Document Library Table */}
-      <div style={{ marginTop: '1.75rem' }}>
-        <h4 style={{ fontSize: '0.88rem', fontWeight: 700, marginBottom: '0.85rem' }}>
-          Indexed Document Store ({docs.length})
-        </h4>
-        <table className="clean-table" style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
-          <thead>
-            <tr>
-              <th>Filename</th>
-              <th>Format</th>
-              <th>Chunks Indexed</th>
-              <th>Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {docs.length > 0 ? (
-              docs.map((d) => (
-                <tr key={d.document_id}>
-                  <td style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <FileText size={14} color="var(--brand-primary)" />
-                    <span>{d.filename}</span>
-                  </td>
-                  <td>
-                    <span className="source-tag">{d.format}</span>
-                  </td>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>
-                    {d.chunk_count}
-                  </td>
-                  <td>
-                    <span className="strip-pill green" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                      <CheckCircle2 size={11} />
-                      {d.status}
-                    </span>
-                  </td>
-                  <td>
-                    <button
-                      onClick={() => deleteDocument(d.document_id)}
-                      style={{ background: 'transparent', border: 'none', color: 'var(--accent-rose)', cursor: 'pointer' }}
-                      title="Delete document"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '1.75rem' }}>
-                  No documents uploaded yet. Upload files to add to the knowledge base.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-};
+    setUploading(''); uploadLock.current = false;
+    if (input.current) input.current.value = '';
+    if (count) { onShowToast(`${count} ${count === 1 ? 'document' : 'documents'} processed.`); await refresh(); }
+    if (failures.length) setError(failures.join('\n'));
+  }
+  async function removeDocument() {
+    if (!pendingDelete || deleting) return;
+    setDeleting(true);
+    try {
+      await api(`/api/v1/documents/${encodeURIComponent(pendingDelete.document_id)}`, { method: 'DELETE' });
+      setDocs(items => items.filter(item => item.document_id !== pendingDelete.document_id));
+      setPendingDelete(null); onShowToast('Document removed from the library list. Indexed content may remain.');
+    } catch (err) { setPendingDelete(null); setError(errorMessage(err)); }
+    finally { setDeleting(false); }
+  }
+  const filtered = docs.filter(doc => doc.filename.toLowerCase().includes(search.toLowerCase()));
+  return <div className="secondary-page"><div className="page-heading"><div className="eyebrow">YOUR RESEARCH FOUNDATION</div><h1>A little context goes a long way.</h1><p>Bring your documents together. Give your research a place to start.</p></div>
+    <section className="panel library-panel"><button className={`upload-dropzone ${dragOver ? 'dragover' : ''}`} disabled={!!uploading} onClick={() => input.current?.click()} onDragOver={event => { event.preventDefault(); if (!uploading) setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={event => { event.preventDefault(); setDragOver(false); void uploadFiles(Array.from(event.dataTransfer.files)); }}>{uploading ? <LoaderCircle size={30} className="spin" /> : <UploadCloud size={30} />}<strong>{uploading ? 'Processing your documents' : 'Drop your documents here'}</strong><span>{uploading || 'or click to browse files'}</span><small>PDF, Word, text, spreadsheets, data & code · Up to 20 MB per file</small></button><input ref={input} type="file" hidden multiple accept={formats.map(format => `.${format}`).join(',')} aria-label="Choose documents to upload" onChange={event => void uploadFiles(Array.from(event.target.files || []))} />
+    {error && <div className="alert error" role="alert"><div><strong>Something needs your attention</strong><p className="preserve-lines">{error}</p></div><button className="button small" onClick={() => void refresh()}>Retry connection</button></div>}
+    <div className="library-toolbar"><h2>Your documents <span className="count">{docs.length}</span></h2><div className="toolbar-actions"><label className="search-field"><Search size={16} /><input aria-label="Search documents" placeholder="Find a document..." value={search} onChange={event => setSearch(event.target.value)} /></label><button className="icon-button" aria-label="Refresh document list" onClick={() => void refresh()} disabled={loading}><RefreshCw size={16} className={loading ? 'spin' : ''} /></button></div></div>
+    <div className="table-scroll"><table className="data-table"><thead><tr><th scope="col">Document</th><th scope="col">Format</th><th scope="col">Passages</th><th scope="col">Status</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead><tbody>{loading ? <tr><td colSpan={5}><div className="empty-state"><LoaderCircle size={25} className="spin" /><p>Loading your library...</p></div></td></tr> : filtered.length ? filtered.map(doc => <tr key={doc.document_id}><td><div className="document-name"><span className="document-icon"><FileText size={19} /></span><div><strong>{doc.filename}</strong><small>{new Date(doc.uploaded_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</small></div></div></td><td><span className="subtle-badge">{doc.format.toUpperCase()}</span></td><td>{doc.chunk_count}</td><td><span className="status-pill success"><CheckCircle2 size={12} />{doc.status}</span></td><td><button className="icon-button danger" aria-label={`Remove ${doc.filename} from library list`} onClick={() => setPendingDelete(doc)}><Trash2 size={16} /></button></td></tr>) : <tr><td colSpan={5}><div className="empty-state"><BookOpen size={30} /><h3>{search ? 'No matching documents' : error ? 'Library unavailable' : 'Make this library yours'}</h3><p>{search ? 'Try another filename or clear your search.' : error ? 'Connect the backend and refresh to see your documents.' : 'Add your first document to give your research more context.'}</p>{search && <button className="text-button" onClick={() => setSearch('')}>Clear search</button>}</div></td></tr>}</tbody></table></div>
+    <p className="panel-footnote">Documents are sent to your configured backend for processing. The library list is currently stored in server memory.</p></section>
+    <dialog ref={dialog} className="confirm-dialog" onCancel={event => { event.preventDefault(); if (!deleting) setPendingDelete(null); }}><h2>Remove this library entry?</h2><p><strong>{pendingDelete?.filename}</strong></p><p>This removes the document from the library list only. The backend does not delete its indexed content, so it may still appear in research results.</p><div className="dialog-actions"><button className="button" disabled={deleting} onClick={() => setPendingDelete(null)}>Keep document</button><button className="button danger-button" disabled={deleting} onClick={() => void removeDocument()}>{deleting ? 'Removing...' : 'Remove entry'}</button></div></dialog>
+  </div>;
+}

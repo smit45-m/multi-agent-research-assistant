@@ -3,6 +3,7 @@ Health and readiness probes for Kubernetes, Docker, and monitoring systems.
 """
 import time
 from fastapi import APIRouter, Request
+from app.config import get_settings
 from app.api.schemas.responses import HealthResponse
 
 router = APIRouter(prefix="/health", tags=["Health"])
@@ -12,6 +13,7 @@ START_TIME = time.time()
 @router.get("/", response_model=HealthResponse)
 async def health_check(request: Request):
     """Basic liveness probe."""
+    settings = get_settings()
     uptime = time.time() - START_TIME
     vector_store = getattr(request.app.state, "vector_store", None)
     doc_count = 0
@@ -26,14 +28,17 @@ async def health_check(request: Request):
         version="1.0.0",
         uptime_seconds=round(uptime, 1),
         vector_store_documents=doc_count,
-        active_concurrent_capacity=50,
+        active_concurrent_capacity=settings.MAX_CONCURRENT_REQUESTS,
         latency_sla_seconds=8.0,
-        accuracy_benchmark_target=85.0
+        accuracy_benchmark_target=85.0,
+        llm_configured=settings.llm_configured,
+        embedding_status="ready"
     )
 
 @router.get("/ready", response_model=HealthResponse)
 async def readiness_check(request: Request):
     """Readiness probe that checks vector store state."""
+    settings = get_settings()
     uptime = time.time() - START_TIME
     vector_store = getattr(request.app.state, "vector_store", None)
     
@@ -52,7 +57,9 @@ async def readiness_check(request: Request):
         version="1.0.0",
         uptime_seconds=round(uptime, 1),
         vector_store_documents=doc_count,
-        active_concurrent_capacity=50,
+        active_concurrent_capacity=settings.MAX_CONCURRENT_REQUESTS,
         latency_sla_seconds=8.0,
-        accuracy_benchmark_target=85.0
+        accuracy_benchmark_target=85.0,
+        llm_configured=settings.llm_configured,
+        embedding_status="ready" if vector_store else "not_loaded"
     )

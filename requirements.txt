@@ -23,4 +23,5 @@ python-docx>=1.1.0
 openpyxl>=3.1.0
 markdown>=3.7
 duckduckgo-search>=7.0.0
+ddgs>=9.0.0
 tenacity>=8.0.0

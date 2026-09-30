@@ -24,4 +24,7 @@ addopts = "-ra -q"
 testpaths = [
     "tests",
 ]
-asyncio_mode = "auto"
+filterwarnings = [
+    "ignore:.*renamed to `ddgs`.*:RuntimeWarning",
+    "ignore::pytest.PytestConfigWarning",
+]

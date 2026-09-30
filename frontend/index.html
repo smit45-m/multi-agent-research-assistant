@@ -8,6 +8,35 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..800;1,6..72,300..800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+      /* Universal scrollbar suppression - eliminates all OS scrollbars, tracks, thumbs, and arrow buttons */
+      html, body, *, *::before, *::after {
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+      }
+      ::-webkit-scrollbar,
+      *::-webkit-scrollbar,
+      html::-webkit-scrollbar,
+      body::-webkit-scrollbar {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+        background: transparent !important;
+      }
+      ::-webkit-scrollbar-track,
+      *::-webkit-scrollbar-track,
+      ::-webkit-scrollbar-thumb,
+      *::-webkit-scrollbar-thumb,
+      ::-webkit-scrollbar-button,
+      *::-webkit-scrollbar-button,
+      ::-webkit-scrollbar-corner,
+      *::-webkit-scrollbar-corner {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+        background: transparent !important;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

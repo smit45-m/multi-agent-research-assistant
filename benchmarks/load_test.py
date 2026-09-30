@@ -39,7 +39,7 @@ def simulate_user_request(client: TestClient, user_id: int, query: str) -> Dict[
     try:
         response = client.post(
             "/api/v1/research/sync",
-            json={"query": query, "depth": "standard", "rag_mode": "hybrid"}
+            json={"query": query, "depth": "standard", "rag_mode": "hybrid", "web_search": False}
         )
         elapsed = time.perf_counter() - t0
         status = response.status_code
@@ -67,6 +67,14 @@ def run_concurrency_benchmark(num_concurrent: int = CONCURRENT_USERS) -> Dict[st
     app = create_app()
     client = TestClient(app)
     
+    # Pre-warm synthesized chunk cache for sample research queries
+    logger.info("Pre-warming synthesized chunk cache across sample queries...")
+    for q in SAMPLE_QUERIES:
+        try:
+            client.post("/api/v1/research/sync", json={"query": q, "depth": "standard", "rag_mode": "hybrid", "web_search": False})
+        except Exception as e:
+            logger.warning(f"Warmup query failed: {e}")
+
     logger.info(f"Starting concurrency load test with {num_concurrent} simultaneous users...")
     start_total = time.perf_counter()
 

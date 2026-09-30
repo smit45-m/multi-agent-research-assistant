@@ -32,7 +32,9 @@ logger = setup_logger(__name__, "INFO")
 SUPPORTED_LOCAL_FORMATS = [
     ".pdf", ".docx", ".txt", ".csv", ".json", 
     ".html", ".htm", ".md", ".xlsx", ".tsv",
-    ".py", ".js", ".ts", ".sh", ".yaml", ".yml", ".xml"
+    ".py", ".js", ".ts", ".sh", ".yaml", ".yml", ".xml",
+    ".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif",
+    ".mp3", ".wav", ".m4a", ".ogg", ".webm", ".flac"
 ]
 SUPPORTED_FORMATS = SUPPORTED_LOCAL_FORMATS
 
@@ -99,9 +101,23 @@ def _load_csv_tsv(file_path: Path, delimiter: str = ",") -> List[Document]:
     return docs if docs else [Document(page_content="Empty tabular dataset", metadata={"source": str(file_path)})]
 
 def _load_json(file_path: Path) -> List[Document]:
-    """Loads JSON documents, handling arrays, records, and nested trees."""
-    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-        data = json.load(f)
+    """Loads JSON documents, handling arrays, records, nested trees, and JSON Lines."""
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            data = json.load(f)
+    except Exception:
+        # Fallback to JSON Lines or raw json blocks
+        docs = []
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            for idx, line in enumerate(f):
+                line = line.strip()
+                if line:
+                    try:
+                        obj = json.loads(line)
+                        docs.append(Document(page_content=json.dumps(obj, indent=2), metadata={"line": idx + 1, "source": str(file_path)}))
+                    except Exception:
+                        docs.append(Document(page_content=line, metadata={"line": idx + 1, "source": str(file_path)}))
+        return docs or [Document(page_content="Empty JSON dataset", metadata={"source": str(file_path)})]
 
     if isinstance(data, list):
         docs = []
@@ -110,7 +126,6 @@ def _load_json(file_path: Path) -> List[Document]:
             docs.append(Document(page_content=content, metadata={"record_index": idx, "source": str(file_path)}))
         return docs
     elif isinstance(data, dict):
-        # Format key entries
         chunks = []
         for k, v in data.items():
             chunks.append(f"## {k}\n{json.dumps(v, indent=2) if isinstance(v, (dict, list)) else str(v)}")
@@ -140,10 +155,46 @@ def _load_text_or_code(file_path: Path) -> List[Document]:
         content = f.read()
     return [Document(page_content=content, metadata={"source": str(file_path)})]
 
+def _load_image(file_path: Path) -> List[Document]:
+    """Loads image and extracts structured multimodal visual knowledge."""
+    try:
+        with open(file_path, "rb") as f:
+            content = f.read()
+        from app.tools.media_input import understand_media
+        kind, text = understand_media(file_path.name, content)
+        return [Document(
+            page_content=f"# Image: {file_path.name}\n\n{text}",
+            metadata={"source": str(file_path), "format": file_path.suffix.lower(), "title": file_path.name, "source_type": "image"}
+        )]
+    except Exception as e:
+        logger.warning(f"Image load fallback for {file_path}: {e}")
+        return [Document(
+            page_content=f"[Image attachment: {file_path.name}]",
+            metadata={"source": str(file_path), "format": file_path.suffix.lower(), "title": file_path.name, "source_type": "image"}
+        )]
+
+def _load_audio(file_path: Path) -> List[Document]:
+    """Loads audio file and extracts transcription via multimodal understanding."""
+    try:
+        with open(file_path, "rb") as f:
+            content = f.read()
+        from app.tools.media_input import understand_media
+        kind, text = understand_media(file_path.name, content)
+        return [Document(
+            page_content=f"# Audio Transcription: {file_path.name}\n\n{text}",
+            metadata={"source": str(file_path), "format": file_path.suffix.lower(), "title": file_path.name, "source_type": "audio"}
+        )]
+    except Exception as e:
+        logger.warning(f"Audio load fallback for {file_path}: {e}")
+        return [Document(
+            page_content=f"[Audio recording: {file_path.name}]",
+            metadata={"source": str(file_path), "format": file_path.suffix.lower(), "title": file_path.name, "source_type": "audio"}
+        )]
+
 def load_document(file_path: Union[str, Path]) -> List[Document]:
     """
     Auto-detects format from file extension and loads multi-format documents.
-    Supports 15+ formats.
+    Supports 15+ formats including images, audio, JSON, tables, and documents.
     """
     path_obj = Path(file_path)
     if not path_obj.exists() or not path_obj.is_file():
@@ -172,6 +223,10 @@ def load_document(file_path: Union[str, Path]) -> List[Document]:
             df = pd.read_excel(str(path_obj))
             csv_str = df.to_csv(index=False)
             docs = [Document(page_content=csv_str, metadata={"source": str(file_path)})]
+        elif ext in [".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif"]:
+            docs = _load_image(path_obj)
+        elif ext in [".mp3", ".wav", ".m4a", ".ogg", ".webm", ".flac"]:
+            docs = _load_audio(path_obj)
         else:
             raise DocumentProcessingError(f"Unsupported format: {ext}")
 

@@ -7,14 +7,18 @@ export interface SourceInfo {
 }
 
 export interface AgentTelemetryInfo {
-  planner_time_ms: number;
-  retriever_time_ms: number;
-  analyzer_time_ms: number;
-  writer_time_ms: number;
-  total_latency_ms: number;
-  baseline_synthesis_time_ms: number;
-  optimized_synthesis_time_ms: number;
-  synthesis_reduction_pct: number;
+  planner_time_ms?: number;
+  retriever_time_ms?: number;
+  analyzer_time_ms?: number;
+  writer_time_ms?: number;
+  fact_checker_time_ms?: number;
+  supervisor_time_ms?: number;
+  review_time_ms?: number;
+  total_latency_ms?: number;
+  baseline_synthesis_time_ms?: number;
+  optimized_synthesis_time_ms?: number;
+  synthesis_reduction_pct?: number;
+  [key: string]: any;
 }
 
 export interface ResearchResponse {
@@ -28,6 +32,9 @@ export interface ResearchResponse {
   synthesis_speedup_ratio: number;
   processing_time_seconds: number;
   orchestrator: string;
+  mode?: string;
+  rag_mode?: string;
+  model?: string;
   telemetry?: AgentTelemetryInfo;
   created_at: string;
 }

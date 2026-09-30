@@ -53,17 +53,22 @@ def split_documents(
     documents: List[Document], 
     chunk_size: Optional[int] = None, 
     chunk_overlap: Optional[int] = None,
-    adaptive: bool = True
+    adaptive: bool = True,
+    mode: str = "balanced"
 ) -> List[Document]:
     """
-    Splits a list of Documents into smaller chunked Documents.
-    If adaptive=True and chunk_size is not forced, applies Multi-Scale Adaptive Chunking:
-    - Small (<2KB): Sentence-window chunks
-    - Medium (2KB-20KB): Semantic recursive chunks
-    - Large (>20KB): Hierarchical Parent-Child chunks
+    Splits a list of Documents into smaller chunked Documents tailored to operational mode:
+    - Low-latency mode: compact chunks (450 chars, 60 overlap) for sub-second retrieval
+    - Researched mode: contextual chunks (1200 chars, 250 overlap) with hierarchical parent-child linking
     """
     if not documents:
         return []
+
+    settings = get_settings()
+    if chunk_size is None or chunk_overlap is None:
+        c_size, c_overlap = settings.chunk_config_for(mode)
+        chunk_size = chunk_size or c_size
+        chunk_overlap = chunk_overlap or c_overlap
 
     if chunk_size is not None or not adaptive:
         splitter = get_text_splitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
@@ -74,7 +79,6 @@ def split_documents(
 
     for doc in documents:
         parents, children = AdaptiveChunker.chunk_document(doc)
-        # Store child chunks (plus parent reference) for indexing
         all_chunks.extend(children)
 
     if all_chunks:

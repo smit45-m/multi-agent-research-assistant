@@ -1,48 +1,60 @@
-"""
-Pydantic v2 response models for schema validation.
-Detailed serialization structures for research reports, citations, telemetry,
-concurrency metrics, and benchmark evaluation.
-"""
-from typing import Optional, List, Dict, Any
+"""Response contracts distinguish evidence diagnostics from measured accuracy."""
+from typing import Optional, Any
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 
+
 class SourceInfo(BaseModel):
-    """Information about a retrieved source across the 15+ supported formats."""
-    title: str = Field(description="Title or filename of the source.")
-    url_or_path: str = Field(description="URL or filesystem path.")
-    relevance_score: float = Field(description="Retrieval relevance score (0.0 to 1.0).")
-    source_type: str = Field(description="Source category: 'pdf', 'arxiv', 'web', 'csv', 'wikipedia', etc.")
-    snippet: Optional[str] = Field(default=None, description="Extracted snippet or excerpt.")
+    citation_id: int = 0
+    title: str
+    url_or_path: str
+    relevance_score: float = 0.0
+    source_type: str = "document"
+    snippet: Optional[str] = None
+
 
 class AgentTelemetryInfo(BaseModel):
-    """Per-agent execution latency breakdown and synthesis speedup telemetry."""
     planner_time_ms: float = 0.0
     retriever_time_ms: float = 0.0
     analyzer_time_ms: float = 0.0
     writer_time_ms: float = 0.0
+    fact_checker_time_ms: float = 0.0
+    supervisor_time_ms: float = 0.0
+    review_time_ms: float = 0.0
     total_latency_ms: float = 0.0
-    baseline_synthesis_time_ms: float = 0.0
-    optimized_synthesis_time_ms: float = 0.0
-    synthesis_reduction_pct: float = 60.0
+    baseline_synthesis_time_ms: Optional[float] = None
+    optimized_synthesis_time_ms: Optional[float] = None
+    synthesis_reduction_pct: Optional[float] = None
+    llm_calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    retrieval_rounds: int = 0
+
 
 class ResearchResponse(BaseModel):
-    """Response model for a completed or ongoing multi-agent research task."""
     task_id: str
-    status: str = Field(description="Task status: 'pending', 'completed', 'failed'")
+    status: str
     query: str
-    report: Optional[str] = Field(default=None, description="Comprehensive generated research report in Markdown.")
-    sources: List[SourceInfo] = Field(default_factory=list, description="Verified sources cited in the report.")
-    confidence_score: float = Field(default=0.88, description="Overall confidence score.")
-    response_accuracy_score: float = Field(default=0.875, description="Factual accuracy score (target: >= 0.85).")
-    synthesis_speedup_ratio: float = Field(default=0.60, description="Synthesis time reduction ratio (60%).")
-    processing_time_seconds: float = Field(default=0.0, description="End-to-end execution time in seconds.")
-    orchestrator: str = Field(default="langgraph", description="Framework used: 'langgraph' or 'crewai'.")
+    report: Optional[str] = None
+    sources: list[SourceInfo] = Field(default_factory=list)
+    confidence_score: float = Field(default=0.0, description="Lexical evidence coverage; NOT factual accuracy.")
+    response_accuracy_score: Optional[float] = None
+    synthesis_speedup_ratio: Optional[float] = None
+    processing_time_seconds: float = 0.0
+    mode: str = "auto"
+    rag_mode: str = "auto"
+    orchestrator: str = "auto"
+    model: Optional[str] = None
+    answer_origin: str = "pending"
+    warnings: list[str] = Field(default_factory=list)
+    routing: dict[str, Any] = Field(default_factory=dict)
+    quality: dict[str, Any] = Field(default_factory=dict)
+    research_plan: dict[str, Any] = Field(default_factory=dict)
     telemetry: Optional[AgentTelemetryInfo] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+
 class DocumentResponse(BaseModel):
-    """Response model for a single uploaded document."""
     document_id: str
     filename: str
     format: str = "document"
@@ -50,37 +62,48 @@ class DocumentResponse(BaseModel):
     status: str
     uploaded_at: datetime
 
+
 class DocumentListResponse(BaseModel):
-    """Response model for a list of documents."""
-    documents: List[DocumentResponse]
+    documents: list[DocumentResponse]
     total_count: int
 
+
 class HealthResponse(BaseModel):
-    """Response model for health check endpoints."""
     status: str
     version: str
     uptime_seconds: float
     vector_store_documents: int
-    active_concurrent_capacity: int = 50
-    latency_sla_seconds: float = 8.0
+    active_concurrent_capacity: int = 8
+    latency_sla_seconds: float = 25.0
     accuracy_benchmark_target: float = 85.0
+    llm_configured: bool = False
+    embedding_status: str = "not_loaded"
+    note: str = "Budgets and targets are configuration, not achieved benchmark results."
+
 
 class BenchmarkResponse(BaseModel):
-    """Response model for the 200+ test cases benchmark suite."""
     total_test_cases: int
     passed_test_cases: int
     pass_rate_percentage: float
     average_accuracy_percentage: float
     target_accuracy_percentage: float = 85.0
     average_latency_seconds: float
-    target_latency_seconds: float = 8.0
-    average_synthesis_speedup_percentage: float
-    target_synthesis_speedup_percentage: float = 60.0
-    categories_evaluated: List[str]
-    sample_results: List[Dict[str, Any]]
+    target_latency_seconds: float = 25.0
+    average_synthesis_speedup_percentage: Optional[float] = None
+    target_synthesis_speedup_percentage: Optional[float] = None
+    categories_evaluated: list[str]
+    sample_results: list[dict[str, Any]]
+    evaluation_kind: str = "offline_regression"
+    methodology: str = ""
+    limitations: list[str] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    configurations: list[dict[str, Any]] = Field(default_factory=list)
+    dataset_sha256: str = ""
+    model: Optional[str] = None
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 
 class ErrorResponse(BaseModel):
-    """Standard error response model."""
     error: str
     detail: Optional[str] = None
     status_code: int

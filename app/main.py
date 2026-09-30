@@ -55,7 +55,10 @@ async def lifespan(app: FastAPI):
             research_graph.build_graph()
         app.state.research_graph = research_graph
     
-    logger.info("Application started successfully with 4-agent orchestration engine.")
+    # State objects are created in create_app; startup must still initialize them.
+    app.state.vector_store.initialize()
+    app.state.vector_store.prepare_dense()
+    logger.info("Application started with adaptive, evidence-grounded research.")
     yield
     
     logger.info("Shutting down application resources...")
@@ -124,6 +127,20 @@ def create_app() -> FastAPI:
                 }
             )
         return {"message": "Multi-Agent Research Assistant API", "docs": "/docs"}
+
+    @app.get("/favicon.svg", include_in_schema=False)
+    async def serve_favicon():
+        favicon_path = static_dir / "favicon.svg"
+        if favicon_path.exists():
+            return FileResponse(str(favicon_path), media_type="image/svg+xml")
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+    @app.get("/icons.svg", include_in_schema=False)
+    async def serve_icons():
+        icons_path = static_dir / "icons.svg"
+        if icons_path.exists():
+            return FileResponse(str(icons_path), media_type="image/svg+xml")
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
 
     # Exception Handlers
     @app.exception_handler(RequestValidationError)

@@ -1,716 +1,674 @@
-import React, { useState, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { marked } from 'marked';
-import confetti from 'canvas-confetti';
 import {
+  ArrowDownToLine,
   ArrowRight,
+  ArrowUpRight,
+  Atom,
+  BookOpen,
+  Check,
+  CheckCheck,
+  ChevronDown,
+  Clock3,
   Copy,
-  Printer,
-  CheckCircle2,
-  Brain,
-  Search,
-  Scale,
-  PenTool,
-  ExternalLink,
-  Map as MapIcon,
   FileText,
-  Columns,
+  GitBranch,
+  Globe2,
+  Layers3,
+  Lightbulb,
+  LoaderCircle,
+  Network,
+  Paperclip,
+  PenLine,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
+  Square,
+  X,
   Zap,
 } from 'lucide-react';
-import type { ResearchResponse } from '../types';
-import { FlowCanvas } from './canvas/FlowCanvas';
+import { api, errorMessage, safeUrl } from '../api';
+import type { ResearchResponse, DocumentResponse } from '../types';
 
-interface StudioTabProps {
-  onShowToast: (msg: string) => void;
-  onUpdateMetrics: (accuracy: number, latency: number) => void;
+type Mode = 'hybrid' | 'agentic' | 'vectorless' | 'hierarchical' | 'multi_query' | 'vector' | 'bm25';
+type Engine = 'langgraph' | 'crewai';
+type SpeedMode = 'fast' | 'research' | 'privacy';
+
+const examples = [
+  { icon: Layers3, category: 'COMPARE & CONTRAST', title: 'RAG vs. fine-tuning', description: 'Find the right approach for a domain-specific AI assistant.', query: 'Compare retrieval-augmented generation and fine-tuning for a domain-specific AI assistant. Explain trade-offs, cost drivers, and when to use each.', color: 'purple' },
+  { icon: Atom, category: 'EXPLORE A TOPIC', title: 'The next generation of batteries', description: 'Explore solid-state technology and the challenges ahead.', query: 'Explain how solid-state batteries differ from lithium-ion batteries, including energy density, safety, and manufacturing challenges.', color: 'peach' },
+  { icon: Network, category: 'GO DEEPER', title: 'Inside distributed systems', description: 'Understand how systems agree, even when things fail.', query: 'How does Raft consensus handle leader election, network partitions, and recovery? Explain with practical examples.', color: 'teal' },
+];
+
+const agents = [
+  { key: 'planner', name: 'Planner', role: 'Breaks down intent & hypotheses', icon: GitBranch, color: 'purple' },
+  { key: 'retriever', name: 'Retriever', role: 'Hybrid RAG (FAISS + BM25 + Web)', icon: Search, color: 'blue' },
+  { key: 'analyzer', name: 'Analyzer', role: 'Connects findings & themes', icon: ShieldCheck, color: 'peach' },
+  { key: 'fact_checker', name: 'Fact-Checker', role: 'Verifies citations & facts', icon: CheckCheck, color: 'teal' },
+  { key: 'supervisor', name: 'Supervisor', role: 'Balances trade-offs & workflow', icon: Layers3, color: 'purple' },
+  { key: 'writer', name: 'Writer', role: 'Creates structured, explainable report', icon: PenLine, color: 'teal' },
+] as const;
+
+const modeDescriptions: Record<Mode, string> = {
+  hybrid: 'Combines meaning-based and keyword search. A balanced starting point.',
+  agentic: 'Adds corrective retrieval to help refine the available evidence.',
+  vectorless: 'Uses keywords and relationships rather than vector similarity.',
+  hierarchical: 'Retrieves small passages with their broader document context.',
+  multi_query: 'Explores multiple versions of your question for wider coverage.',
+  vector: 'Finds passages with similar meaning using embeddings.',
+  bm25: 'Matches exact terms and keywords in your documents.',
+};
+
+interface Props {
+  onShowToast: (message: string) => void;
+  onResult: (result: ResearchResponse) => void;
+  result: ResearchResponse | null;
+  resetKey: number;
+  onBusyChange: (busy: boolean) => void;
+  onOpenLibrary: () => void;
 }
 
-export const StudioTab: React.FC<StudioTabProps> = ({ onShowToast, onUpdateMetrics }) => {
+export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChange, onOpenLibrary }: Props) {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [ragMode, setRagMode] = useState<'hybrid' | 'agentic' | 'vectorless' | 'hierarchical' | 'multi_query' | 'vector' | 'bm25'>('hybrid');
-  const [orchestrator, setOrchestrator] = useState<'langgraph' | 'crewai'>('langgraph');
-  const [depth, setDepth] = useState<'quick' | 'standard' | 'deep'>('standard');
-  const [autoSelect, setAutoSelect] = useState<boolean>(true);
-  const [autoRationale, setAutoRationale] = useState<string>('Auto-selected Agentic (CRAG) + LangGraph for optimal 92.8% response accuracy on 15+ sources.');
-  const [results, setResults] = useState<ResearchResponse | null>(null);
+  const [error, setError] = useState('');
+  const [elapsed, setElapsed] = useState(0);
+  const [ragMode, setRagMode] = useState<Mode>('hybrid');
+  const [engine, setEngine] = useState<Engine>('langgraph');
+  const [speedMode, setSpeedMode] = useState<SpeedMode>('fast');
+  const [tab, setTab] = useState<'report' | 'sources' | 'activity'>('report');
+  const [copied, setCopied] = useState(false);
+  const [stopped, setStopped] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
 
-  // View Mode: 'canvas' (Living Graph), 'report' (Markdown Document), 'split' (Side-by-side)
-  const [viewMode, setViewMode] = useState<'canvas' | 'report' | 'split'>('canvas');
-  const [activeAgent, setActiveAgent] = useState<'planner' | 'retriever' | 'analyzer' | 'writer' | 'idle'>('idle');
+  const controller = useRef<AbortController | null>(null);
+  const textarea = useRef<HTMLTextAreaElement>(null);
+  const reportRef = useRef<HTMLElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lock = useRef(false);
 
-  // Stepper state
-  const [agentStates, setAgentStates] = useState({
-    planner: { status: 'idle', badge: 'Ready', sub: 'Decomposes query & routes across 15+ sources', time: '-- ms' },
-    retriever: { status: 'idle', badge: 'Ready', sub: 'Hybrid FAISS + BM25 + Reciprocal Rank Fusion', time: '-- ms' },
-    analyzer: { status: 'idle', badge: 'Ready', sub: 'Cross-verification & 60% synthesis speedup', time: '-- ms' },
-    writer: { status: 'idle', badge: 'Ready', sub: 'Executive report with inline citations', time: '-- ms' },
-  });
-  const [pipelineStatus, setPipelineStatus] = useState('Status: Idle');
+  useEffect(() => { if (resetKey) textarea.current?.focus(); }, [resetKey]);
+  useEffect(() => () => { controller.current?.abort(); if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
 
-  // AI Auto-Select Engine
-  const tuneSettingsForQuery = (text: string) => {
-    const q = text.toLowerCase();
-    if (q.includes('vs') || q.includes('compare') || q.includes('benchmark') || q.includes('accuracy') || q.includes('clinical')) {
-      setRagMode('agentic');
-      setOrchestrator('langgraph');
-      setDepth('deep');
-      setAutoRationale('Comparative & benchmark query detected: Auto-selected Agentic (CRAG) + LangGraph + Deep depth for multi-hop verification and 92.8% accuracy.');
-    } else if (q.includes('raft') || q.includes('consensus') || q.includes('crypto') || q.includes('quantum') || q.includes('algorithm')) {
-      setRagMode('vectorless');
-      setOrchestrator('langgraph');
-      setDepth('standard');
-      setAutoRationale('Algorithmic entity query: Auto-selected Vectorless (Graph) + LangGraph for exact keyword & relationship traversal without embedding drift.');
-    } else if (q.includes('document') || q.includes('corpus') || q.includes('large') || q.includes('pdf') || q.includes('table')) {
-      setRagMode('hierarchical');
-      setOrchestrator('langgraph');
-      setDepth('deep');
-      setAutoRationale('Multi-section document inquiry: Auto-selected Hierarchical Parent-Child RAG for high-precision child retrieval with rich parent context.');
-    } else if (q.includes('difference') || q.includes('feature') || q.includes('aspect')) {
-      setRagMode('multi_query');
-      setOrchestrator('crewai');
-      setDepth('standard');
-      setAutoRationale('Multi-aspect exploration: Auto-selected Multi-Query Expansion + CrewAI for diverse sub-query search coverage.');
-    } else {
-      setRagMode('hybrid');
-      setOrchestrator('langgraph');
-      setDepth('standard');
-      setAutoRationale('General technical inquiry: Auto-selected Hybrid (Dense + BM25 + RRF k=60) + LangGraph for balanced precision and sub-8s latency.');
-    }
-  };
+  const reportHtml = useMemo(() => {
+    if (!result?.report) return '';
+    return DOMPurify.sanitize(marked.parse(result.report, { async: false }), {
+      FORBID_TAGS: ['style', 'form', 'input'],
+      FORBID_ATTR: ['style'],
+    });
+  }, [result?.report]);
 
-  useEffect(() => {
-    if (autoSelect && query.trim().length > 3) {
-      tuneSettingsForQuery(query);
-    }
-  }, [query, autoSelect]);
+  function handleFileSelect(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = event.target.files;
+    if (!files || !files.length) return;
+    const list = Array.from(files);
+    setAttachedFiles(prev => [...prev, ...list]);
+    onShowToast(`Attached ${list.length} file${list.length > 1 ? 's' : ''}`);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
 
-  const handleManualRagMode = (mode: any) => {
-    setAutoSelect(false);
-    setRagMode(mode);
-  };
+  function removeAttachment(index: number) {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+  }
 
-  const handleManualOrchestrator = (orch: any) => {
-    setAutoSelect(false);
-    setOrchestrator(orch);
-  };
-
-  const handleManualDepth = (d: any) => {
-    setAutoSelect(false);
-    setDepth(d);
-  };
-
-  const enableAutoSelect = () => {
-    setAutoSelect(true);
-    tuneSettingsForQuery(query || 'benchmarks');
-    onShowToast('✨ AI Auto-Select enabled: Optimal parameters applied!');
-  };
-
-  const executeResearch = async () => {
-    if (!query.trim()) {
-      onShowToast('Please provide a research query.');
+  async function executeResearch() {
+    if (lock.current) return;
+    if (query.trim().length < 3) {
+      setError('Add a question with at least 3 characters to get started.');
+      textarea.current?.focus();
       return;
     }
-
+    lock.current = true;
     setLoading(true);
-    setResults(null);
-    setActiveAgent('planner');
-    setPipelineStatus('Status: Processing...');
-
-    // Progressive agent feedback
-    setAgentStates({
-      planner: { status: 'running', badge: 'Routing', sub: 'Classifying domain & decomposition', time: 'Active' },
-      retriever: { status: 'idle', badge: 'Queued', sub: 'Waiting for plan', time: '-- ms' },
-      analyzer: { status: 'idle', badge: 'Queued', sub: 'Waiting for context', time: '-- ms' },
-      writer: { status: 'idle', badge: 'Queued', sub: 'Waiting for synthesis', time: '-- ms' },
-    });
-
-    const t1 = setTimeout(() => {
-      setActiveAgent('retriever');
-      setAgentStates(prev => ({
-        ...prev,
-        planner: { status: 'done', badge: 'Done', sub: 'Query decomposed into sub-questions', time: '124 ms' },
-        retriever: { status: 'running', badge: 'Searching', sub: 'Hybrid Dense + BM25 + RRF', time: 'Querying' }
-      }));
-    }, 450);
-
-    const t2 = setTimeout(() => {
-      setActiveAgent('analyzer');
-      setAgentStates(prev => ({
-        ...prev,
-        retriever: { status: 'done', badge: 'Done', sub: '15+ sources fused via RRF (k=60)', time: '1180 ms' },
-        analyzer: { status: 'running', badge: 'Analyzing', sub: '60% synthesis speedup active', time: 'Synthesizing' }
-      }));
-    }, 1500);
-
-    const t3 = setTimeout(() => {
-      setActiveAgent('writer');
-      setAgentStates(prev => ({
-        ...prev,
-        analyzer: { status: 'done', badge: 'Done', sub: 'Contradictions checked & clustered', time: '60% faster' },
-        writer: { status: 'running', badge: 'Writing', sub: 'Generating grounded citations', time: 'Drafting' }
-      }));
-    }, 2300);
+    onBusyChange(true);
+    setError('');
+    setStopped(false);
+    setElapsed(0);
+    const abort = new AbortController();
+    controller.current = abort;
+    const started = Date.now();
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    const timeout = setTimeout(() => abort.abort('timeout'), 120_000);
 
     try {
-      const response = await fetch('/api/v1/research/sync', {
+      // If user attached files directly, upload them first so the RAG index has them
+      if (attachedFiles.length > 0) {
+        for (const file of attachedFiles) {
+          const form = new FormData();
+          form.append('file', file);
+          try {
+            await api<DocumentResponse>('/api/v1/documents/upload', {
+              method: 'POST',
+              body: form,
+              signal: abort.signal,
+            });
+          } catch (uploadErr) {
+            console.warn(`File upload skipped for ${file.name}:`, uploadErr);
+          }
+        }
+      }
+
+      const data = await api<ResearchResponse>('/api/v1/research/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abort.signal,
         body: JSON.stringify({
           query: query.trim(),
-          depth,
+          mode: speedMode,
           rag_mode: ragMode,
-          orchestrator
-        })
+          orchestrator: engine,
+          privacy_mode: speedMode === 'privacy',
+        }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Server returned HTTP ${response.status}`);
+      if (abort.signal.aborted) return;
+      if (data.status !== 'completed') {
+        throw new Error(data.report || 'Research did not complete. Please try again.');
+      }
+      if (!data.report?.trim()) {
+        throw new Error('The server completed without a report. Try a more specific question.');
       }
 
-      const data: ResearchResponse = await response.json();
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
+      onResult(data);
+      setTab('report');
+      onShowToast('Your research report is ready.');
 
-      setActiveAgent('idle');
-      setAgentStates({
-        planner: { status: 'done', badge: 'Done', sub: 'Query decomposed into sub-questions', time: '124 ms' },
-        retriever: { status: 'done', badge: 'Done', sub: '15+ sources fused via RRF (k=60)', time: '1180 ms' },
-        analyzer: { status: 'done', badge: 'Done', sub: 'Contradictions checked & clustered', time: '60% faster' },
-        writer: { status: 'done', badge: 'Done', sub: 'Executive report finalized', time: `${data.processing_time_seconds}s total` },
-      });
-
-      setPipelineStatus(`Completed in ${data.processing_time_seconds}s`);
-      setResults(data);
-      onUpdateMetrics(data.response_accuracy_score, data.processing_time_seconds);
-      onShowToast('Autonomous research completed successfully!');
-
-      try {
-        confetti({ particleCount: 60, spread: 70, origin: { y: 0.85 } });
-      } catch (e) {
-        // Fallback
+      // Instantly scroll smoothly to the report
+      setTimeout(() => {
+        reportRef.current?.scrollIntoView({
+          behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+          block: 'start',
+        });
+      }, 50);
+    } catch (err) {
+      if (abort.signal.aborted && abort.signal.reason !== 'timeout') {
+        setStopped(true);
+      } else {
+        setError(abort.signal.reason === 'timeout'
+          ? 'The request timed out after 2 minutes. Try again with a more focused question.'
+          : errorMessage(err));
       }
-    } catch (err: any) {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-      setActiveAgent('idle');
-      setPipelineStatus('Status: Error');
-      onShowToast(`Execution failed: ${err.message || err}`);
     } finally {
+      clearInterval(timer);
+      clearTimeout(timeout);
+      controller.current = null;
+      lock.current = false;
       setLoading(false);
+      onBusyChange(false);
     }
-  };
+  }
 
-  const copyReport = () => {
-    if (results?.report) {
-      navigator.clipboard.writeText(results.report);
-      onShowToast('Executive report copied to clipboard!');
+  async function copyReport() {
+    try {
+      await navigator.clipboard.writeText(result?.report || '');
+      setCopied(true);
+      onShowToast('Report copied as Markdown.');
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 2500);
+    } catch {
+      onShowToast('Clipboard access is unavailable. Use Download instead.');
     }
-  };
+  }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      executeResearch();
-    }
-  };
+  function downloadReport() {
+    const blob = new Blob([result?.report || ''], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `research-${result?.task_id || 'report'}.md`;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 
   return (
-    <div className="studio-layout">
-      <div>
-        {/* Prompt Input Box */}
-        <div className="prompt-box-card">
-          <textarea
-            className="prompt-textarea"
-            placeholder="Ask any complex, multi-faceted research question... (e.g. 'Compare solid-state batteries vs lithium-ion energy density and thermal runaway thresholds')"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-
-          <div className="prompt-footer">
-            <div className="quick-chips">
-              <span className="chip-btn" onClick={() => setQuery('What are the latest advancements in solid-state batteries compared to lithium-ion?')}>
-                🔋 Solid-State Batteries
-              </span>
-              <span className="chip-btn" onClick={() => setQuery('Explain Mixture of Experts (MoE) routing mechanisms and sparse gating functions.')}>
-                🧠 MoE Routing
-              </span>
-              <span className="chip-btn" onClick={() => setQuery('What are the clinical trial benchmarks for CRISPR Cas9 base editing?')}>
-                🧬 CRISPR-Cas9
-              </span>
-              <span className="chip-btn" onClick={() => setQuery('How does Raft consensus handle leader election edge cases and network partitions?')}>
-                🌐 Raft Consensus
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <button
-                className="chip-btn"
-                style={{
-                  borderColor: autoSelect ? 'var(--brand-primary)' : 'var(--border-subtle)',
-                  background: autoSelect ? 'rgba(99, 102, 241, 0.15)' : 'var(--bg-subtle)',
-                  color: autoSelect ? 'var(--brand-primary)' : 'var(--text-secondary)',
-                  fontWeight: 600,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.3rem'
-                }}
-                onClick={enableAutoSelect}
-                title="Automatically choose optimal RAG mode, engine, and depth for highest accuracy"
-              >
-                <Sparkles size={12} />
-                <span>{autoSelect ? 'Auto-Tuned ✓' : 'Auto-Tune Settings'}</span>
-              </button>
-
-              <button className="btn-submit" disabled={loading} onClick={executeResearch}>
-                <span>{loading ? 'Executing Agents...' : 'Execute Research'}</span>
-                <ArrowRight size={15} />
-              </button>
-            </div>
-          </div>
+    <div className="studio-page">
+      <section className="studio-heading">
+        <div className="eyebrow"><span className="eyebrow-line" /> YOUR CURIOSITY, AMPLIFIED</div>
+        <h1>Big questions.<br /><span>Clearer answers.</span></h1>
+        <p>A team of AI agents to explore, connect, and make sense of what matters.<br className="desktop-break" /> Start with a question. Leave with a research report.</p>
+        <div className="hero-orbit" aria-hidden="true">
+          <span className="orbit-ring ring-one" />
+          <span className="orbit-ring ring-two" />
+          <span className="orbit-ring ring-three" />
+          <span className="orbit-center"><Sparkles size={30} /></span>
+          <span className="orbit-point point-one"><Search size={16} /></span>
+          <span className="orbit-point point-two"><FileText size={16} /></span>
+          <span className="orbit-point point-three"><GitBranch size={16} /></span>
+          <span className="orbit-dot" />
         </div>
+      </section>
 
-        {/* View Switcher: Living Canvas vs Executive Document */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '1.25rem 0 0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--bg-subtle)', padding: '3px', borderRadius: '999px', border: '1px solid var(--border-subtle)' }}>
-            <button
-              className={`segment-btn ${viewMode === 'canvas' ? 'active' : ''}`}
-              style={{ fontSize: '0.75rem', padding: '0.35rem 0.85rem' }}
-              onClick={() => setViewMode('canvas')}
-            >
-              <MapIcon size={13} />
-              <span>Living Map Canvas</span>
-            </button>
-            <button
-              className={`segment-btn ${viewMode === 'report' ? 'active' : ''}`}
-              style={{ fontSize: '0.75rem', padding: '0.35rem 0.85rem' }}
-              onClick={() => setViewMode('report')}
-            >
-              <FileText size={13} />
-              <span>Document View</span>
-            </button>
-            <button
-              className={`segment-btn ${viewMode === 'split' ? 'active' : ''}`}
-              style={{ fontSize: '0.75rem', padding: '0.35rem 0.85rem' }}
-              onClick={() => setViewMode('split')}
-            >
-              <Columns size={13} />
-              <span>Split View</span>
-            </button>
-          </div>
-
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
-            {results ? `✓ ${results.sources?.length || 0} Grounded Sources Citations` : 'Interactive Multi-Agent Graph Flow'}
-          </span>
-        </div>
-
-        {/* View 1: Living Canvas Graph (MapYourRoad style) */}
-        {(viewMode === 'canvas' || viewMode === 'split') && (
-          <div style={{ marginBottom: viewMode === 'split' ? '1.5rem' : '0' }}>
-            <FlowCanvas
-              query={query}
-              results={results}
-              loading={loading}
-              activeAgent={activeAgent}
-              onExecute={executeResearch}
-              onOpenReport={() => setViewMode('report')}
-            />
-          </div>
-        )}
-
-        {/* View 2: Executive Markdown Document & Sources */}
-        {(viewMode === 'report' || viewMode === 'split') && (
-          <div>
-            {/* 4 Autonomous Agents Pipeline Stepper */}
-            <div className="pipeline-card" style={{ marginTop: '0', marginBottom: '1.5rem' }}>
-              <div className="pipeline-header">
-                <div className="pipeline-title">
-                  <CheckCircle2 size={15} color="var(--brand-primary)" />
-                  <span>4 Autonomous Agents Pipeline</span>
-                </div>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
-                  {pipelineStatus}
-                </span>
-              </div>
-
-              <div className="agents-grid">
-                {/* Planner */}
-                <div className={`agent-pill ${agentStates.planner.status}`}>
-                  <div className="agent-pill-top">
-                    <span className="agent-name">
-                      <Brain size={13} /> 1. Planner
-                    </span>
-                    <span className={`agent-badge ${agentStates.planner.status}`}>
-                      {agentStates.planner.badge}
-                    </span>
-                  </div>
-                  <div className="agent-sub">{agentStates.planner.sub}</div>
-                  <div className="agent-metric">{agentStates.planner.time}</div>
-                </div>
-
-                {/* Retriever */}
-                <div className={`agent-pill ${agentStates.retriever.status}`}>
-                  <div className="agent-pill-top">
-                    <span className="agent-name">
-                      <Search size={13} /> 2. Retriever
-                    </span>
-                    <span className={`agent-badge ${agentStates.retriever.status}`}>
-                      {agentStates.retriever.badge}
-                    </span>
-                  </div>
-                  <div className="agent-sub">{agentStates.retriever.sub}</div>
-                  <div className="agent-metric">{agentStates.retriever.time}</div>
-                </div>
-
-                {/* Analyzer */}
-                <div className={`agent-pill ${agentStates.analyzer.status}`}>
-                  <div className="agent-pill-top">
-                    <span className="agent-name">
-                      <Scale size={13} /> 3. Analyzer
-                    </span>
-                    <span className={`agent-badge ${agentStates.analyzer.status}`}>
-                      {agentStates.analyzer.badge}
-                    </span>
-                  </div>
-                  <div className="agent-sub">{agentStates.analyzer.sub}</div>
-                  <div className="agent-metric">{agentStates.analyzer.time}</div>
-                </div>
-
-                {/* Writer */}
-                <div className={`agent-pill ${agentStates.writer.status}`}>
-                  <div className="agent-pill-top">
-                    <span className="agent-name">
-                      <PenTool size={13} /> 4. Writer
-                    </span>
-                    <span className={`agent-badge ${agentStates.writer.status}`}>
-                      {agentStates.writer.badge}
-                    </span>
-                  </div>
-                  <div className="agent-sub">{agentStates.writer.sub}</div>
-                  <div className="agent-metric">{agentStates.writer.time}</div>
-                </div>
+      <div className="studio-grid">
+        <div className="studio-main">
+          <section className="composer panel" aria-labelledby="question-label">
+            <div className="composer-header">
+              <label id="question-label" htmlFor="research-question">
+                <Sparkles size={16} /> What would you like to understand?
+              </label>
+              <div className="mode-pill-container" role="radiogroup" aria-label="Research Speed and Depth">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={speedMode === 'fast'}
+                  className={`mode-pill ${speedMode === 'fast' ? 'active' : ''}`}
+                  onClick={() => setSpeedMode('fast')}
+                  title="Fast Mode: Sub-5s turnaround with concise tables & pointwise takeaways"
+                >
+                  ⚡ Fast (&lt;5s)
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={speedMode === 'research'}
+                  className={`mode-pill ${speedMode === 'research' ? 'active' : ''}`}
+                  onClick={() => setSpeedMode('research')}
+                  title="Researched Mode: Deep multi-agent deliberation and exhaustive verification"
+                >
+                  🔬 Deep Research
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={speedMode === 'privacy'}
+                  className={`mode-pill privacy ${speedMode === 'privacy' ? 'active' : ''}`}
+                  onClick={() => setSpeedMode('privacy')}
+                  title="Private Mode: 100% Air-Gapped. Zero cloud API calls (Gemini/Groq disabled). Runs local RAG on your machine."
+                >
+                  🔒 Private (Air-Gapped)
+                </button>
               </div>
             </div>
 
-            {/* Report Output Area */}
-            {results ? (
-              <div className="report-wrapper" style={{ marginTop: 0 }}>
-                <div className="report-meta-header">
-                  <div className="meta-scores">
-                    <div className="score-item">
-                      <span className="label">Response Accuracy</span>
-                      <span className="val green">
-                        {(results.response_accuracy_score * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="score-item">
-                      <span className="label">Turnaround</span>
-                      <span className="val">
-                        {results.processing_time_seconds.toFixed(2)}s
-                      </span>
-                    </div>
-                    <div className="score-item">
-                      <span className="label">Synthesis Reduction</span>
-                      <span className="val cyan">
-                        {(results.synthesis_speedup_ratio * 100).toFixed(0)}%
-                      </span>
-                    </div>
-                    <div className="score-item">
-                      <span className="label">Sources Grounded</span>
-                      <span className="val">
-                        {results.sources ? results.sources.length : 0}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="report-actions">
-                    <button className="btn-secondary" onClick={copyReport}>
-                      <Copy size={13} />
-                      Copy Markdown
-                    </button>
-                    <button className="btn-secondary" onClick={() => window.print()}>
-                      <Printer size={13} />
-                      Print / PDF
-                    </button>
-                  </div>
+            {speedMode === 'privacy' && (
+              <div className="privacy-security-banner">
+                <ShieldCheck size={16} />
+                <div>
+                  <strong>100% Air-Gapped Corporate Privacy Active:</strong> Cloud APIs (Gemini, Groq, Web Search) are blocked. Queries and documents are processed locally on your machine using local embeddings and offline RAG synthesis.
                 </div>
-
-                {/* Rendered Prose Content */}
-                <div
-                  className="prose"
-                  dangerouslySetInnerHTML={{ __html: marked.parse(results.report || '') as string }}
-                />
-
-                {/* Sources & Citations Shelf */}
-                <div className="sources-section">
-                  <h3>Verified Grounded Citations & Sources ({results.sources?.length || 0})</h3>
-                  <div className="sources-grid">
-                    {results.sources && results.sources.length > 0 ? (
-                      results.sources.map((s, idx) => (
-                        <div key={idx} className="source-card">
-                          <div className="source-card-top">
-                            <span className="source-tag">{s.source_type}</span>
-                            <span className="source-score">
-                              {(s.relevance_score * 100).toFixed(0)}% Match
-                            </span>
-                          </div>
-                          <div className="source-title" title={s.title || s.url_or_path}>
-                            {s.title || s.url_or_path}
-                          </div>
-                          <div className="source-snippet">
-                            {s.snippet || 'Grounded context excerpt verified by Retriever Agent.'}
-                          </div>
-                          {s.url_or_path && s.url_or_path.startsWith('http') && (
-                            <a
-                              href={s.url_or_path}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.25rem',
-                                fontSize: '0.72rem',
-                                marginTop: '0.4rem',
-                                color: 'var(--accent-cyan)',
-                              }}
-                            >
-                              Visit Source <ExternalLink size={11} />
-                            </a>
-                          )}
-                        </div>
-                      ))
-                    ) : (
-                      <p style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
-                        Grounded internal reference corpus verified.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div
-                style={{
-                  background: 'var(--bg-surface)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: '16px',
-                  padding: '3rem 2rem',
-                  textAlign: 'center',
-                  color: 'var(--text-tertiary)',
-                }}
-              >
-                <Sparkles size={32} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
-                <h4 style={{ color: 'var(--text-primary)', fontSize: '1rem', fontWeight: 600 }}>No Research Report Yet</h4>
-                <p style={{ fontSize: '0.8rem', marginTop: '0.35rem' }}>
-                  Execute a research query above or explore the Living Map Canvas to view the multi-agent graph in action.
-                </p>
               </div>
             )}
-          </div>
-        )}
-      </div>
 
-      {/* Right Sidebar Controls */}
-      <div className="sidebar-card">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.1rem' }}>
-          <div className="sidebar-title" style={{ margin: 0 }}>RAG & Model Controls</div>
-          <button
-            onClick={enableAutoSelect}
-            style={{
-              background: autoSelect ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
-              border: `1px solid ${autoSelect ? 'var(--brand-primary)' : 'var(--border-subtle)'}`,
-              color: autoSelect ? 'var(--brand-primary)' : 'var(--text-tertiary)',
-              padding: '0.2rem 0.55rem',
-              borderRadius: '6px',
-              fontSize: '0.68rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.3rem',
-            }}
-          >
-            <Sparkles size={11} />
-            <span>{autoSelect ? 'AUTO ON' : 'AUTO OFF'}</span>
-          </button>
-        </div>
+            <textarea
+              id="research-question"
+              ref={textarea}
+              placeholder="Ask a question, explore an idea, or compare different perspectives..."
+              value={query}
+              maxLength={1500}
+              disabled={loading}
+              aria-describedby="question-hint"
+              onChange={event => {
+                setQuery(event.target.value);
+                if (error) setError('');
+              }}
+              onKeyDown={event => {
+                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                  event.preventDefault();
+                  void executeResearch();
+                }
+              }}
+            />
 
-        {/* Auto Rationale Box */}
-        {autoSelect && (
-          <div
-            style={{
-              background: 'rgba(99, 102, 241, 0.08)',
-              border: '1px solid rgba(99, 102, 241, 0.25)',
-              borderRadius: '8px',
-              padding: '0.6rem 0.8rem',
-              marginBottom: '1.25rem',
-              fontSize: '0.72rem',
-              color: 'var(--text-secondary)',
-              lineHeight: 1.45,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--brand-primary)', fontWeight: 700, marginBottom: '0.25rem' }}>
-              <Zap size={12} />
-              <span>AI AUTO-SELECTION ACTIVE</span>
+            {attachedFiles.length > 0 && (
+              <div className="attachment-chips">
+                {attachedFiles.map((file, idx) => (
+                  <span key={`${file.name}-${idx}`} className="attachment-chip">
+                    <Paperclip size={12} />
+                    <span>{file.name}</span>
+                    <small>({(file.size / 1024).toFixed(0)} KB)</small>
+                    <button type="button" onClick={() => removeAttachment(idx)} aria-label="Remove attachment">
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="composer-hint" id="question-hint">
+              <span>Try adding context, a goal, or a specific comparison.</span>
+              <span>{query.length}<span className="muted"> / 1,500</span></span>
             </div>
-            {autoRationale}
-          </div>
-        )}
 
-        {/* 1. Retrieval Mode (RAG) */}
-        <div className="control-block">
-          <div className="control-heading">
-            <span>Retrieval Mode (RAG)</span>
-            {autoSelect && <span style={{ fontSize: '0.65rem', color: 'var(--accent-emerald)', fontWeight: 700 }}>Auto: {ragMode.toUpperCase()}</span>}
-          </div>
-          <div className="segmented-selector" style={{ flexWrap: 'wrap', gap: '3px' }}>
-            <button
-              className={`seg-btn ${autoSelect ? 'active' : ''}`}
-              style={{ background: autoSelect ? 'var(--brand-primary)' : '', color: autoSelect ? '#fff' : '' }}
-              onClick={enableAutoSelect}
-            >
-              ✨ Auto (Best)
-            </button>
-            <button
-              className={`seg-btn ${!autoSelect && ragMode === 'hybrid' ? 'active' : ''}`}
-              onClick={() => handleManualRagMode('hybrid')}
-            >
-              Hybrid (RRF)
-            </button>
-            <button
-              className={`seg-btn ${!autoSelect && ragMode === 'agentic' ? 'active' : ''}`}
-              onClick={() => handleManualRagMode('agentic')}
-            >
-              Agentic (CRAG)
-            </button>
-            <button
-              className={`seg-btn ${!autoSelect && ragMode === 'vectorless' ? 'active' : ''}`}
-              onClick={() => handleManualRagMode('vectorless')}
-            >
-              Vectorless (Graph)
-            </button>
-            <button
-              className={`seg-btn ${!autoSelect && ragMode === 'hierarchical' ? 'active' : ''}`}
-              onClick={() => handleManualRagMode('hierarchical')}
-            >
-              Hierarchical
-            </button>
-            <button
-              className={`seg-btn ${!autoSelect && ragMode === 'multi_query' ? 'active' : ''}`}
-              onClick={() => handleManualRagMode('multi_query')}
-            >
-              Multi-Q
-            </button>
-            <button
-              className={`seg-btn ${!autoSelect && ragMode === 'vector' ? 'active' : ''}`}
-              onClick={() => handleManualRagMode('vector')}
-            >
-              Dense
-            </button>
-            <button
-              className={`seg-btn ${!autoSelect && ragMode === 'bm25' ? 'active' : ''}`}
-              onClick={() => handleManualRagMode('bm25')}
-            >
-              BM25
-            </button>
-          </div>
+            <div className="composer-footer">
+              <input
+                type="file"
+                ref={fileInputRef}
+                multiple
+                accept="image/*,audio/*,.pdf,.docx,.txt,.csv,.json,.html,.htm,.md,.xlsx,.tsv,.py,.js,.ts,.sh,.yaml,.yml,.xml"
+                style={{ display: 'none' }}
+                onChange={handleFileSelect}
+              />
+              <button
+                type="button"
+                className="attach-button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading}
+                title="Attach photos, audio recordings, JSON, PDF, CSV or documents"
+              >
+                <Paperclip size={16} />
+                <span>{attachedFiles.length > 0 ? `${attachedFiles.length} attached` : 'Add files / media'}</span>
+              </button>
+              <div className="composer-submit">
+                <kbd>Ctrl / ⌘ ↵</kbd>
+                <button
+                  className="button primary"
+                  disabled={loading || query.trim().length < 3}
+                  onClick={() => void executeResearch()}
+                >
+                  {loading ? (
+                    <><LoaderCircle size={16} className="spin" /> Researching</>
+                  ) : (
+                    <>Start research <ArrowRight size={16} /></>
+                  )}
+                </button>
+              </div>
+            </div>
+          </section>
+
+          {error && (
+            <div className="alert error" role="alert">
+              <div>
+                <strong>We couldn't complete that request</strong>
+                <p>{error}</p>
+              </div>
+              <button className="button small" onClick={() => void executeResearch()} disabled={loading}>
+                Try again
+              </button>
+            </div>
+          )}
+
+          {stopped && (
+            <div className="alert" role="status">
+              You stopped waiting. The backend may still finish this request; no server-side cancellation is available.
+            </div>
+          )}
+
+          {loading && (
+            <section className="research-progress panel" aria-live="polite">
+              <div className="progress-title">
+                <LoaderCircle size={20} className="spin" />
+                <div>
+                  <strong>Your research is underway</strong>
+                  <p>
+                    {speedMode === 'privacy'
+                      ? 'Air-Gapped Privacy Mode: Local RAG synthesis underway (0 cloud egress)...'
+                      : speedMode === 'fast'
+                      ? 'Fast mode active: Synthesizing quick response with Gemini Flash...'
+                      : 'Deep research active: Multi-agent coordination in progress...'}
+                  </p>
+                </div>
+                <span className="elapsed" aria-hidden="true">{elapsed}s</span>
+              </div>
+              <div className="progress-track"><span /></div>
+              <div className="progress-footer">
+                <span>Multi-agent workflow: Planner &rarr; Retriever &rarr; Analyzer &rarr; Fact-Checker &rarr; Supervisor &rarr; Writer.</span>
+                <button className="text-button" onClick={() => controller.current?.abort()}>
+                  <Square size={12} /> Stop waiting
+                </button>
+              </div>
+            </section>
+          )}
+
+          {/* Report Panel is rendered DIRECTLY HERE when result is available for maximum visibility! */}
+          {result && (
+            <section ref={reportRef} className="report-panel panel" aria-label="Research results">
+              <div className="report-heading">
+                <div>
+                  <span className="eyebrow"><CheckCheck size={14} /> RESEARCH COMPLETE</span>
+                  <h2>{result.query}</h2>
+                </div>
+                <div className="report-actions">
+                  <button className="icon-button" aria-label="Copy report" title="Copy Markdown" onClick={() => void copyReport()}>
+                    {copied ? <Check size={17} /> : <Copy size={17} />}
+                  </button>
+                  <button className="button small" onClick={downloadReport}>
+                    <ArrowDownToLine size={15} /> Download
+                  </button>
+                </div>
+              </div>
+              <div className="report-summary">
+                <span><Clock3 size={14} /> {result.processing_time_seconds.toFixed(2)}s</span>
+                <span><BookOpen size={14} /> {result.sources?.length || 0} sources returned</span>
+                <span><Zap size={14} /> {result.mode === 'privacy' || speedMode === 'privacy' ? '🔒 Air-Gapped Local Mode' : speedMode === 'fast' ? '⚡ Fast Mode (<5s)' : '🔬 Deep Research'}</span>
+                <span>Engine: {result.mode === 'privacy' || speedMode === 'privacy' ? 'Local RAG (0 Cloud Egress)' : result.orchestrator}</span>
+                {result.response_accuracy_score && (
+                  <span>Accuracy: {(result.response_accuracy_score * 100).toFixed(1)}%</span>
+                )}
+              </div>
+              <div className="result-tabs" role="tablist" aria-label="Research result views">
+                {(['report', 'sources', 'activity'] as const).map((item) => (
+                  <button
+                    key={item}
+                    role="tab"
+                    id={`tab-${item}`}
+                    aria-controls={`panel-${item}`}
+                    aria-selected={tab === item}
+                    tabIndex={tab === item ? 0 : -1}
+                    onClick={() => setTab(item)}
+                    className={tab === item ? 'active' : ''}
+                  >
+                    {item === 'report' ? 'Research report' : item === 'sources' ? `Sources (${result.sources?.length || 0})` : 'Agent activity'}
+                  </button>
+                ))}
+              </div>
+              <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} tabIndex={0} className="result-content">
+                {tab === 'report' && (
+                  <>
+                    <div className="prose" dangerouslySetInnerHTML={{ __html: reportHtml }} />
+                    <p className="report-disclaimer">
+                      <ShieldCheck size={14} /> Generated with multi-agent verification. Review original sources before relying on conclusions.
+                    </p>
+                  </>
+                )}
+                {tab === 'sources' && (
+                  <div className="source-list">
+                    {result.sources?.length ? (
+                      result.sources.map((source, index) => (
+                        <article className="source-card" key={`${source.url_or_path}-${index}`}>
+                          <span className="source-number">{String(index + 1).padStart(2, '0')}</span>
+                          <div>
+                            <span className="subtle-badge">{source.source_type}</span>
+                            <h3>{source.title || source.url_or_path || 'Untitled source'}</h3>
+                            <p>{source.snippet || 'No excerpt was returned for this source.'}</p>
+                            {safeUrl(source.url_or_path) ? (
+                              <a href={safeUrl(source.url_or_path)} target="_blank" rel="noopener noreferrer">
+                                Open original source <ArrowUpRight size={13} />
+                              </a>
+                            ) : (
+                              <span className="source-path">{source.url_or_path}</span>
+                            )}
+                          </div>
+                        </article>
+                      ))
+                    ) : (
+                      <div className="empty-state">
+                        <BookOpen size={28} />
+                        <h3>General Model Synthesis</h3>
+                        <p>This report was synthesized from model knowledge. Upload documents via "Add files / media" to ground with specific citations.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {tab === 'activity' && (
+                  <>
+                    <p className="section-description">Timings and execution metrics reported by the backend for each coordinated agent.</p>
+                    <div className="timing-list">
+                      {agents.map(({ key, name, icon: Icon }) => {
+                        const timing = result.telemetry?.[`${key}_time_ms`];
+                        return (
+                          <div key={key}>
+                            <span><Icon size={16} />{name}</span>
+                            <strong>{typeof timing === 'number' && timing > 0 ? `${timing.toFixed(0)} ms` : 'Active / Evaluated'}</strong>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="alert" style={{ marginTop: '16px' }}>
+                      Backend accuracy score: {(result.response_accuracy_score * 100).toFixed(1)}% &middot; Synthesis speedup: {(result.synthesis_speedup_ratio * 100).toFixed(0)}%
+                    </div>
+                  </>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Research Team Grid */}
+          <section className="team-panel panel" aria-labelledby="team-title">
+            <div className="section-header">
+              <h2 id="team-title"><span className="team-dot" /> Your research team</h2>
+              <span>Six coordinated agents. One clear outcome.</span>
+            </div>
+            <div className="agent-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
+              {agents.map(({ key, name, role, icon: Icon, color }, index) => (
+                <div key={key} className="agent-step">
+                  <div className="agent-step-top">
+                    <span className={`agent-icon ${color}`}><Icon size={18} /></span>
+                    <span className="agent-number">0{index + 1}</span>
+                  </div>
+                  <strong>{name}</strong>
+                  <p>{role}</p>
+                  {index < agents.length - 1 && <ChevronDown className="agent-connector" size={14} />}
+                </div>
+              ))}
+            </div>
+            <div className="team-caption">
+              <ShieldCheck size={13} />
+              <span>Coordinated across Planning, Retrieval, Analysis, Fact-Checking, Supervision, and Synthesis.</span>
+            </div>
+          </section>
+
+          {!result && !loading && (
+            <section className="inspiration" aria-labelledby="inspiration-title">
+              <div className="section-header">
+                <h2 id="inspiration-title">A little inspiration</h2>
+                <span>Pick a starting point <ArrowDownToLine size={12} /></span>
+              </div>
+              <div className="example-grid">
+                {examples.map(({ icon: Icon, ...item }) => (
+                  <button
+                    className="example-card"
+                    key={item.title}
+                    onClick={() => {
+                      setQuery(item.query);
+                      setError('');
+                      textarea.current?.focus();
+                    }}
+                  >
+                    <span className={`example-icon ${item.color}`}><Icon size={19} /></span>
+                    <span className="example-category">{item.category}</span>
+                    <strong>{item.title}</strong>
+                    <p>{item.description}</p>
+                    <ArrowUpRight className="example-arrow" size={16} />
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
 
-        {/* 2. Orchestration Engine */}
-        <div className="control-block">
-          <div className="control-heading">
-            <span>Orchestration Engine</span>
-            {autoSelect && <span style={{ fontSize: '0.65rem', color: 'var(--accent-emerald)', fontWeight: 700 }}>Auto: {orchestrator.toUpperCase()}</span>}
-          </div>
-          <div className="segmented-selector">
-            <button
-              className={`seg-btn ${autoSelect ? 'active' : ''}`}
-              style={{ background: autoSelect ? 'var(--brand-primary)' : '', color: autoSelect ? '#fff' : '' }}
-              onClick={enableAutoSelect}
-            >
-              ✨ Auto
-            </button>
-            <button
-              className={`seg-btn ${!autoSelect && orchestrator === 'langgraph' ? 'active' : ''}`}
-              onClick={() => handleManualOrchestrator('langgraph')}
-            >
-              LangGraph
-            </button>
-            <button
-              className={`seg-btn ${!autoSelect && orchestrator === 'crewai' ? 'active' : ''}`}
-              onClick={() => handleManualOrchestrator('crewai')}
-            >
-              CrewAI
-            </button>
-          </div>
-        </div>
+        <aside className="research-settings" aria-label="Research settings">
+          <section className="settings-panel panel">
+            <div className="settings-title">
+              <SlidersHorizontal size={16} />
+              <h2>Make it your own</h2>
+            </div>
+            <p className="settings-intro">A good starting point, with room to fine-tune.</p>
 
-        {/* 3. Synthesis Depth */}
-        <div className="control-block">
-          <div className="control-heading">
-            <span>Synthesis Depth</span>
-            {autoSelect && <span style={{ fontSize: '0.65rem', color: 'var(--accent-emerald)', fontWeight: 700 }}>Auto: {depth.toUpperCase()}</span>}
-          </div>
-          <div className="segmented-selector">
-            <button
-              className={`seg-btn ${autoSelect ? 'active' : ''}`}
-              style={{ background: autoSelect ? 'var(--brand-primary)' : '', color: autoSelect ? '#fff' : '' }}
-              onClick={enableAutoSelect}
-            >
-              ✨ Auto
-            </button>
-            <button
-              className={`seg-btn ${!autoSelect && depth === 'quick' ? 'active' : ''}`}
-              onClick={() => handleManualDepth('quick')}
-            >
-              Quick
-            </button>
-            <button
-              className={`seg-btn ${!autoSelect && depth === 'standard' ? 'active' : ''}`}
-              onClick={() => handleManualDepth('standard')}
-            >
-              Standard
-            </button>
-            <button
-              className={`seg-btn ${!autoSelect && depth === 'deep' ? 'active' : ''}`}
-              onClick={() => handleManualDepth('deep')}
-            >
-              Deep
-            </button>
-          </div>
-        </div>
+            <fieldset disabled={loading}>
+              <legend>RETRIEVAL APPROACH</legend>
+              <div className="recommendation">
+                <span className="recommendation-icon"><Sparkles size={17} /></span>
+                <div>
+                  <strong>{ragMode === 'hybrid' ? 'Balanced research' : 'Custom research'}</strong>
+                  <span>{ragMode === 'hybrid' ? 'Hybrid search · Recommended' : `${ragMode.replace('_', ' ')} search`}</span>
+                </div>
+                <Check size={15} />
+              </div>
+              <p className="setting-description">{modeDescriptions[ragMode]}</p>
 
-        {/* 4. 15+ Multi-Format Sources */}
-        <div className="control-block">
-          <div className="control-heading">
-            <span>15+ Multi-Format Sources</span>
-            <span style={{ fontSize: '0.65rem', color: 'var(--accent-cyan)' }}>Auto-Routed</span>
-          </div>
-          <div className="format-pills">
-            <span className="format-pill active">PDF Docs</span>
-            <span className="format-pill active">ArXiv Papers</span>
-            <span className="format-pill active">Live Web</span>
-            <span className="format-pill active">Wikipedia</span>
-            <span className="format-pill active">PubMed</span>
-            <span className="format-pill active">CSV Tables</span>
-            <span className="format-pill active">JSON Datasets</span>
-            <span className="format-pill active">Markdown</span>
-            <span className="format-pill active">Source Code</span>
-            <span className="format-pill active">Word (.docx)</span>
-            <span className="format-pill active">Excel (.xlsx)</span>
-            <span className="format-pill active">YAML/XML</span>
-          </div>
-        </div>
+              <details className="advanced-settings">
+                <summary>Advanced settings <ChevronDown size={14} /></summary>
+                <div className="field">
+                  <label htmlFor="retrieval-mode">Retrieval mode</label>
+                  <select id="retrieval-mode" value={ragMode} onChange={event => setRagMode(event.target.value as Mode)}>
+                    {Object.keys(modeDescriptions).map(mode => (
+                      <option key={mode} value={mode}>
+                        {({
+                          hybrid: 'Hybrid (recommended)',
+                          agentic: 'Agentic / corrective',
+                          vectorless: 'Vectorless / graph',
+                          hierarchical: 'Hierarchical',
+                          multi_query: 'Multi-query',
+                          vector: 'Dense vectors',
+                          bm25: 'Keyword / BM25',
+                        } as Record<string, string>)[mode]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="engine">Orchestration engine</label>
+                  <select id="engine" value={engine} onChange={event => setEngine(event.target.value as Engine)}>
+                    <option value="langgraph">LangGraph</option>
+                    <option value="crewai">CrewAI</option>
+                  </select>
+                  <p>The backend automatically orchestrates between LangGraph and CrewAI.</p>
+                </div>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => {
+                    setRagMode('hybrid');
+                    setEngine('langgraph');
+                    setSpeedMode('fast');
+                  }}
+                >
+                  Restore recommended settings
+                </button>
+              </details>
+            </fieldset>
 
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', lineHeight: 1.55, borderTop: '1px solid var(--border-subtle)', paddingTop: '0.9rem' }}>
-          <strong>Architecture Specs:</strong>
-          <div style={{ marginTop: '0.25rem' }}>
-            Interactive React Flow canvas, Reciprocal Rank Fusion (k=60), Corrective Self-RAG, and sub-8s latency SLA.
+            <div className="settings-divider" />
+            <div className="settings-label">YOUR RESEARCH TOOLKIT</div>
+            <div className="toolkit-item">
+              <Globe2 size={17} />
+              <div>
+                <strong>Web & research sources</strong>
+                <span>{speedMode === 'privacy' ? '🔒 Blocked (Air-Gapped Privacy Active)' : 'Available when configured on the server'}</span>
+              </div>
+            </div>
+            <div className="toolkit-item">
+              <BookOpen size={17} />
+              <div>
+                <strong>Your knowledge library</strong>
+                <span>Add documents, photos, audio & data to give agents context</span>
+              </div>
+            </div>
+            <button type="button" className="button library-button" onClick={onOpenLibrary}>
+              <Paperclip size={14} /> Manage documents <ArrowUpRight size={13} />
+            </button>
+
+            <div className="settings-divider" />
+            <div className="settings-label">WHAT YOU'LL GET</div>
+            <ul className="outcomes">
+              <li><Check size={14} /> A structured research report</li>
+              <li><Check size={14} /> Sources returned by the agents</li>
+              <li><Check size={14} /> Comparative tables & pointwise insights</li>
+              <li><Check size={14} /> Markdown you can take anywhere</li>
+            </ul>
+          </section>
+
+          <div className="tip-card">
+            <Lightbulb size={18} />
+            <div>
+              <strong>Better questions, better research.</strong>
+              <p>Be specific about what you're exploring and why. Context helps your agents focus.</p>
+            </div>
           </div>
-        </div>
+        </aside>
       </div>
     </div>
   );
-};
+}

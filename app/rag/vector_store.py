@@ -1,164 +1,149 @@
+"""Thread-safe canonical document store with optional normalized FAISS indexing.
+
+JSON, not executable pickle, persists documents. Lexical retrieval works even when
+semantic model loading fails. Existing legacy index files are never removed.
 """
-FAISS vector store management for document retrieval.
-"""
+import json
 import os
 import threading
-from typing import List, Optional
-
+import uuid
+from pathlib import Path
 from langchain_core.documents import Document
-from langchain_community.vectorstores import FAISS
-
 from app.config import get_settings
-from app.utils.logger import setup_logger
 from app.rag.embeddings import get_embedding_model
 from app.utils.exceptions import RetrievalError
 
-logger = setup_logger(__name__, "INFO")
 
 class VectorStoreManager:
-    """
-    Thread-safe manager for a FAISS vector store.
-    """
-    def __init__(self, persist_directory: Optional[str] = None):
-        """
-        Initializes the VectorStoreManager.
-        """
-        settings = get_settings()
-        self.persist_directory = persist_directory or settings.VECTOR_STORE_PATH
-        self.embeddings_model = get_embedding_model()
-        self.vector_store: Optional[FAISS] = None
-        self._lock = threading.Lock()
-        
-    def _load_or_create_store(self) -> Optional[FAISS]:
-        """
-        Internal method to load an existing FAISS index from disk.
-        """
+    def __init__(self, persist_directory=None, embeddings=None):
+        self.persist_directory = str(persist_directory or get_settings().store_path)
+        self.embeddings_model = embeddings
+        self.vector_store = None
+        self._documents = {}
+        self._lock = threading.RLock()
+        self.version = 0
+        self.initialized = False
+        self.embedding_status = "not_loaded"
+        self.warnings = []
+        self._embedding_attempted = embeddings is not None
+
+    @property
+    def dense_available(self):
+        return self.vector_store is not None and self.embedding_status == "ready"
+
+    def initialize(self):
+        with self._lock:
+            if self.initialized:
+                return
+            path = Path(self.persist_directory) / "documents.json"
+            if path.is_file():
+                try:
+                    items = json.loads(path.read_text(encoding="utf-8"))
+                    self._documents = {item["id"]: Document(page_content=item["content"], metadata=item["metadata"]) for item in items}
+                except (ValueError, KeyError, TypeError) as exc:
+                    raise RetrievalError("Could not read the persisted JSON document index.") from exc
+            elif (Path(self.persist_directory) / "index.pkl").exists():
+                self.warnings.append("Legacy pickle index was not deserialized. Re-upload original documents to migrate safely; legacy files remain untouched.")
+            self.initialized = True
+            self.version += 1
+
+    def prepare_dense(self):
+        """Call at startup or explicit ingestion, never download models during a query."""
+        with self._lock:
+            if not self._embedding_attempted:
+                self._embedding_attempted = True
+                try:
+                    self.embeddings_model = get_embedding_model()
+                except RuntimeError as exc:
+                    self.embedding_status = "unavailable"
+                    self.warnings.append(str(exc))
+                    return False
+            if self.embeddings_model is None:
+                return False
+            self._rebuild_dense()
+            return self.embedding_status == "ready"
+
+    def _rebuild_dense(self):
+        if self.embeddings_model is None or not self._documents:
+            self.vector_store = None
+            return
         try:
-            if os.path.exists(self.persist_directory) and os.listdir(self.persist_directory):
-                logger.info(f"Loading existing FAISS index from {self.persist_directory}...")
-                store = FAISS.load_local(
-                    folder_path=self.persist_directory,
-                    embeddings=self.embeddings_model,
-                    allow_dangerous_deserialization=True
-                )
-                logger.info("Successfully loaded existing FAISS index.")
-                return store
-            else:
-                logger.info("No existing index found. Returning None to indicate empty store.")
-                return None
-        except Exception as e:
-            logger.error(f"Error loading FAISS index: {str(e)}")
-            raise RetrievalError(f"Failed to load vector store: {str(e)}")
+            from langchain_community.vectorstores import FAISS
+            self.vector_store = FAISS.from_documents(
+                list(self._documents.values()), self.embeddings_model,
+                ids=list(self._documents), normalize_L2=True)
+            self.embedding_status = "ready"
+        except Exception:
+            self.vector_store = None
+            self.embedding_status = "unavailable"
+            warning = "Semantic indexing failed; uploaded text is preserved and keyword retrieval remains available."
+            if warning not in self.warnings:
+                self.warnings.append(warning)
 
-    def initialize(self) -> None:
-        """
-        Initializes the vector store by loading it from disk.
-        """
-        with self._lock:
-            if self.vector_store is None:
-                self.vector_store = self._load_or_create_store()
-
-    def add_documents(self, documents: List[Document]) -> List[str]:
-        """
-        Adds a list of documents to the vector store.
-        """
+    def add_documents(self, documents):
         if not documents:
-            logger.warning("No documents provided to add.")
             return []
-            
-        logger.info(f"Adding {len(documents)} documents to the vector store...")
         with self._lock:
-            try:
-                if self.vector_store is None:
-                    self.vector_store = FAISS.from_documents(
-                        documents,
-                        self.embeddings_model
-                    )
-                    logger.info("Created new FAISS index with provided documents.")
-                    doc_ids = []
-                else:
-                    doc_ids = self.vector_store.add_documents(documents)
-                    logger.info(f"Added documents to existing FAISS index.")
-                    return doc_ids if doc_ids else []
-                return doc_ids
-            except Exception as e:
-                logger.error(f"Error adding documents to vector store: {str(e)}")
-                raise RetrievalError(f"Failed to add documents: {str(e)}")
+            ids = []
+            for doc in documents:
+                if not doc.page_content.strip():
+                    continue
+                identifier = str(uuid.uuid4())
+                self._documents[identifier] = Document(page_content=doc.page_content, metadata=dict(doc.metadata))
+                ids.append(identifier)
+            self.version += 1
+            if self.embeddings_model is not None:
+                self._rebuild_dense()
+            return ids
 
-    def similarity_search(self, query: str, k: int = 5, score_threshold: float = 0.7) -> List[Document]:
-        """
-        Performs a similarity search on the vector store.
-        """
-        logger.info(f"Performing similarity search for query: '{query}' (k={k})")
+    def get_all_documents(self):
         with self._lock:
-            if self.vector_store is None:
-                logger.warning("Vector store is empty or uninitialized. Returning no results.")
+            return [Document(page_content=d.page_content, metadata={**d.metadata, "chunk_id": key}) for key, d in self._documents.items()]
+
+    def similarity_search(self, query, k=5, score_threshold=0.25):
+        if not query.strip() or k < 1:
+            return []
+        with self._lock:
+            if not self.dense_available:
                 return []
-                
             try:
-                results = self.vector_store.similarity_search_with_relevance_scores(query, k=k)
-                filtered_docs = []
-                for doc, score in results:
+                # Normalized vectors: squared L2 = 2 - 2*cosine similarity.
+                matches = self.vector_store.similarity_search_with_score(query, k=k)
+                result = []
+                for doc, distance in matches:
+                    score = max(0.0, min(1.0, 1.0 - float(distance) / 2.0))
                     if score >= score_threshold:
-                        doc.metadata["relevance_score"] = score
-                        filtered_docs.append(doc)
-                        
-                logger.info(f"Found {len(filtered_docs)} relevant documents (above threshold {score_threshold}).")
-                return filtered_docs
-            except NotImplementedError:
-                logger.warning("Relevance scores not supported by current FAISS index configuration. Falling back to standard search.")
-                docs = self.vector_store.similarity_search(query, k=k)
-                return docs
-            except Exception as e:
-                logger.error(f"Error during similarity search: {str(e)}")
-                raise RetrievalError(f"Search failed: {str(e)}")
+                        result.append(Document(page_content=doc.page_content, metadata={**doc.metadata, "dense_score": score, "relevance_score": score}))
+                return result
+            except Exception:
+                raise RetrievalError("Semantic search failed; keyword retrieval remains available.") from None
 
-    def delete_documents(self, doc_ids: List[str]) -> None:
-        """
-        Deletes documents from the vector store by their IDs.
-        """
-        logger.info(f"Deleting {len(doc_ids)} documents from vector store...")
+    def delete_documents(self, doc_ids):
         with self._lock:
-            if self.vector_store is None:
-                logger.warning("Cannot delete from an empty/uninitialized vector store.")
+            for identifier in doc_ids:
+                self._documents.pop(identifier, None)
+            self.version += 1
+            if self.embeddings_model is not None:
+                self._rebuild_dense()
+
+    def delete_by_document_id(self, document_id):
+        with self._lock:
+            ids = [key for key, doc in self._documents.items() if doc.metadata.get("document_id") == document_id]
+            self.delete_documents(ids)
+            return len(ids)
+
+    def get_document_count(self):
+        with self._lock:
+            return len(self._documents)
+
+    def save(self):
+        with self._lock:
+            directory = Path(self.persist_directory)
+            if not self._documents and not (directory / "documents.json").exists():
                 return
-                
-            try:
-                self.vector_store.delete(doc_ids)
-                logger.info("Successfully deleted documents.")
-            except Exception as e:
-                logger.error(f"Error deleting documents: {str(e)}")
-                raise RetrievalError(f"Failed to delete documents: {str(e)}")
-
-    def get_document_count(self) -> int:
-        """
-        Returns the total number of documents (vectors) in the store.
-        """
-        with self._lock:
-            if self.vector_store is None:
-                return 0
-            
-            try:
-                count = self.vector_store.index.ntotal
-                return count
-            except Exception as e:
-                logger.error(f"Error getting document count: {str(e)}")
-                return 0
-
-    def save(self) -> None:
-        """
-        Persists the current state of the vector store to disk.
-        """
-        with self._lock:
-            if self.vector_store is None:
-                logger.warning("No vector store to save.")
-                return
-                
-            logger.info(f"Saving FAISS index to {self.persist_directory}...")
-            try:
-                os.makedirs(self.persist_directory, exist_ok=True)
-                self.vector_store.save_local(self.persist_directory)
-                logger.info("Successfully saved FAISS index to disk.")
-            except Exception as e:
-                logger.error(f"Error saving vector store: {str(e)}")
-                raise RetrievalError(f"Failed to save vector store: {str(e)}")
+            directory.mkdir(parents=True, exist_ok=True)
+            target = directory / "documents.json"
+            temporary = directory / ("documents." + uuid.uuid4().hex + ".tmp")
+            payload = [{"id": identifier, "content": doc.page_content, "metadata": doc.metadata} for identifier, doc in self._documents.items()]
+            temporary.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
+            os.replace(temporary, target)

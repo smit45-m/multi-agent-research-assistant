@@ -1,193 +1,30 @@
-import React, { useState, useEffect } from 'react';
-import { Play, Search } from 'lucide-react';
-import type { BenchmarkResponse, BenchmarkResult } from '../types';
+import { useRef, useState } from 'react';
+import { ArrowRight, CheckCircle2, FlaskConical, LoaderCircle, Search, XCircle } from 'lucide-react';
+import { api, errorMessage } from '../api';
+import type { BenchmarkResponse } from '../types';
 
-interface BenchmarksTabProps {
-  onShowToast: (msg: string) => void;
-}
-
-export const BenchmarksTab: React.FC<BenchmarksTabProps> = ({ onShowToast }) => {
+export function BenchmarksTab({ onShowToast }: { onShowToast: (message: string) => void }) {
   const [data, setData] = useState<BenchmarkResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
-
-  const fetchBenchmarks = async (maxCases = 30) => {
-    setLoading(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('all');
+  const [limit, setLimit] = useState(30);
+  const lock = useRef(false);
+  async function run() {
+    if (lock.current) return;
+    lock.current = true; setLoading(true); setError('');
     try {
-      const res = await fetch(`/api/v1/research/benchmark?max_cases=${maxCases}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: BenchmarkResponse = await res.json();
-      setData(json);
-    } catch (err: any) {
-      onShowToast(`Failed to load benchmark data: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const runLiveEvaluation = async () => {
-    onShowToast('Executing 200+ test cases benchmark suite...');
-    setLoading(true);
-    try {
-      const res = await fetch('/api/v1/research/benchmark/run?max_cases=30', { method: 'POST' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: BenchmarkResponse = await res.json();
-      setData(json);
-      onShowToast(`Evaluation complete: ${json.pass_rate_percentage}% pass rate across ${json.total_test_cases} cases!`);
-    } catch (err: any) {
-      onShowToast('Evaluation error: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchBenchmarks(30);
-  }, []);
-
-  const categories = ['All', 'Artificial Intelligence & LLMs', 'Clean Energy & Battery Tech', 'Biomedical & Genomics', 'Cloud Infrastructure & Distributed Systems', 'Financial Analytics & Risk Models', 'Cybersecurity & Post-Quantum Crypto', 'DevOps & Site Reliability', 'Modern Web Architecture'];
-
-  const filteredResults = (data?.sample_results || []).filter((r: BenchmarkResult) => {
-    const matchesSearch = r.query.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          r.test_id.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'All' || r.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
-
-  return (
-    <div className="table-card">
-      <div className="table-header-bar">
-        <div>
-          <h3 style={{ fontSize: '1.05rem', fontFeatureSettings: '"tnum"', fontWeight: 700 }}>
-            200+ Test Cases Benchmark Evaluation Suite
-          </h3>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.2rem' }}>
-            Rigorous evaluation suite evaluating 205 test cases across 8 technical domains. Verified &ge;85% accuracy and sub-8s turnaround.
-          </p>
-        </div>
-
-        <button className="btn-submit" disabled={loading} onClick={runLiveEvaluation}>
-          <Play size={14} />
-          <span>{loading ? 'Evaluating...' : 'Run Benchmark Suite'}</span>
-        </button>
-      </div>
-
-      {/* Aggregate Score Bar */}
-      {data && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', padding: '1.25rem 1.6rem', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-subtle)' }}>
-          <div>
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Total Cases</span>
-            <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>{data.total_test_cases} Cases</div>
-          </div>
-          <div>
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Average Accuracy</span>
-            <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--accent-emerald)' }}>
-              {data.average_accuracy_percentage}%
-            </div>
-          </div>
-          <div>
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Average Latency</span>
-            <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>{data.average_latency_seconds}s</div>
-          </div>
-          <div>
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Synthesis Reduction</span>
-            <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--brand-primary)' }}>
-              {data.average_synthesis_speedup_percentage}% Speedup
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Search & Filter Toolbar */}
-      <div style={{ padding: '1rem 1.6rem', display: 'flex', gap: '0.85rem', flexWrap: 'wrap', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
-          <Search size={14} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-          <input
-            type="text"
-            placeholder="Search test cases or topics..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '0.45rem 0.85rem 0.45rem 2.2rem',
-              background: 'var(--bg-subtle)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-md)',
-              color: 'var(--text-primary)',
-              fontSize: '0.82rem',
-              outline: 'none',
-            }}
-          />
-        </div>
-
-        <div style={{ display: 'flex', gap: '0.35rem', overflowX: 'auto', maxWidth: '100%' }}>
-          {categories.map((c) => (
-            <button
-              key={c}
-              className={`chip-btn ${selectedCategory === c ? 'active' : ''}`}
-              style={{
-                borderColor: selectedCategory === c ? 'var(--brand-primary)' : 'var(--border-subtle)',
-                background: selectedCategory === c ? 'rgba(99, 102, 241, 0.12)' : 'var(--bg-subtle)',
-                color: selectedCategory === c ? 'var(--brand-primary)' : 'var(--text-secondary)'
-              }}
-              onClick={() => setSelectedCategory(c)}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Results Table */}
-      <div style={{ overflowX: 'auto' }}>
-        <table className="clean-table">
-          <thead>
-            <tr>
-              <th>Test ID</th>
-              <th>Category</th>
-              <th>Query Topic</th>
-              <th>Format</th>
-              <th>Accuracy</th>
-              <th>Latency</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredResults.length > 0 ? (
-              filteredResults.map((r) => (
-                <tr key={r.test_id}>
-                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--brand-primary)', fontWeight: 600 }}>
-                    {r.test_id}
-                  </td>
-                  <td style={{ fontWeight: 500, fontSize: '0.8rem' }}>{r.category}</td>
-                  <td style={{ maxWidth: '340px', fontSize: '0.82rem', color: 'var(--text-primary)' }}>
-                    {r.query}
-                  </td>
-                  <td>
-                    <span className="source-tag">{r.target_source_format}</span>
-                  </td>
-                  <td style={{ fontWeight: 700, color: 'var(--accent-emerald)' }}>
-                    {r.accuracy_score}%
-                  </td>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>
-                    {r.latency_seconds}s
-                  </td>
-                  <td>
-                    <span className="strip-pill green">PASSED</span>
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '2rem' }}>
-                  {loading ? 'Loading benchmark data...' : 'No test cases matched the search criteria.'}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-};
+      const result = await api<BenchmarkResponse>('/api/v1/research/benchmark/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ max_cases: limit }) });
+      setData(result); setCategory('all'); onShowToast(`Evaluation finished: ${result.passed_test_cases} of ${result.total_test_cases} cases passed.`);
+    } catch (err) { setError(errorMessage(err)); }
+    finally { setLoading(false); lock.current = false; }
+  }
+  const results = (data?.sample_results || []).filter(item => (category === 'all' || item.category === category) && `${item.query} ${item.test_id}`.toLowerCase().includes(search.toLowerCase()));
+  const categories = [...new Set((data?.sample_results || []).map(item => item.category))];
+  return <div className="secondary-page"><div className="page-heading"><div className="eyebrow">UNDERSTAND THE OUTPUT</div><h1>Put the research to the test.</h1><p>Explore the project's evaluation cases and see where the system can improve.</p></div><div className="alert"><FlaskConical size={19} /><div><strong>Development evaluation, not a production guarantee.</strong><p>The current backend uses estimated accuracy and simulated latency. These results are useful for development, not independent evidence of real-world performance.</p></div></div><section className="panel"><div className="panel-toolbar"><div><h2>Benchmark evaluation</h2><p>Run only when you need it. No evaluations start automatically.</p></div><div className="toolbar-actions"><label className="sr-only" htmlFor="case-limit">Number of test cases</label><select id="case-limit" value={limit} disabled={loading} onChange={event => setLimit(Number(event.target.value))}><option value={5}>5 cases</option><option value={30}>30 cases</option><option value={100}>100 cases</option><option value={300}>Full suite (up to 300)</option></select><button className="button primary" disabled={loading} onClick={() => void run()}>{loading ? <><LoaderCircle size={16} className="spin" /> Evaluating</> : <>Run evaluation <ArrowRight size={16} /></>}</button></div></div>
+    {error && <div className="alert error inset" role="alert"><strong>Evaluation failed</strong><p>{error}</p></div>}
+    {data && <div className="metrics-grid"><div><span>Cases evaluated</span><strong>{data.total_test_cases}</strong></div><div><span>Pass rate</span><strong>{data.pass_rate_percentage.toFixed(1)}<small>%</small></strong></div><div><span>Estimated accuracy</span><strong>{data.average_accuracy_percentage.toFixed(1)}<small>%</small></strong></div><div><span>Simulated latency</span><strong>{data.average_latency_seconds.toFixed(2)}<small>s</small></strong></div></div>}
+    {data && <div className="filter-toolbar"><label className="search-field"><Search size={16} /><input aria-label="Search benchmark cases" placeholder="Search questions or test IDs..." value={search} onChange={event => setSearch(event.target.value)} /></label><label className="sr-only" htmlFor="category">Filter benchmark category</label><select id="category" value={category} onChange={event => setCategory(event.target.value)}><option value="all">All categories</option>{categories.map(item => <option key={item}>{item}</option>)}</select></div>}
+    <div className="table-scroll"><table className="data-table"><thead><tr><th scope="col">Test case</th><th scope="col">Research question</th><th scope="col">Estimated accuracy</th><th scope="col">Simulated latency</th><th scope="col">Result</th></tr></thead><tbody>{results.length ? results.map(item => <tr key={item.test_id}><td><code>{item.test_id}</code></td><td className="query-cell"><strong>{item.query}</strong><small>{item.category}</small></td><td>{item.accuracy_score.toFixed(1)}%</td><td>{item.latency_seconds.toFixed(2)}s</td><td><span className={`status-pill ${item.passed ? 'success' : 'failure'}`}>{item.passed ? <CheckCircle2 size={12} /> : <XCircle size={12} />}{item.passed ? 'Passed' : 'Failed'}</span></td></tr>) : <tr><td colSpan={5}><div className="empty-state">{loading ? <LoaderCircle size={30} className="spin" /> : <FlaskConical size={30} />}<h3>{loading ? 'Evaluating your selected cases' : data ? 'No matching test cases' : 'A clearer picture starts with a test'}</h3><p>{loading ? 'Results will appear when the server finishes.' : data ? 'Try a different search or category.' : 'Choose a sample size, then run an evaluation.'}</p></div></td></tr>}</tbody></table></div>{data && <p className="panel-footnote">Showing {results.length} of {data.sample_results.length} returned sample cases. Aggregate metrics cover {data.total_test_cases} evaluated cases.</p>}</section></div>;
+}

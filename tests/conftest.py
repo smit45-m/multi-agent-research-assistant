@@ -1,13 +1,21 @@
-"""
-Pytest test configuration and mock fixtures.
-"""
 import pytest
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*renamed to.*")
+
 from unittest.mock import MagicMock, patch
 from starlette.testclient import TestClient
 
 from app.main import create_app
 from app.config import Settings
 from langchain_core.documents import Document
+
+@pytest.fixture(autouse=True)
+def mock_search_tool():
+    with patch("app.tools.search_tool.WebSearchTool.search") as mock_s:
+        mock_s.return_value = [
+            {"title": "Autonomous Agents Overview", "url": "https://example.com/agents", "snippet": "Autonomous agents are AI systems capable of perceiving and acting in their environment.", "source_type": "web"}
+        ]
+        yield mock_s
 
 @pytest.fixture
 def mock_settings():

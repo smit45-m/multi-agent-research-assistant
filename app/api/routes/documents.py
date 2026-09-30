@@ -42,11 +42,21 @@ async def upload_document(
             await out_file.write(content)
 
         docs = load_document(temp_path)
+        for d in docs:
+            d.metadata["filename"] = file.filename or os.path.basename(temp_path)
+            d.metadata["title"] = file.filename or os.path.basename(temp_path)
         chunks = split_documents(docs, chunk_size=1000, chunk_overlap=100)
+        for c in chunks:
+            c.metadata["filename"] = file.filename or os.path.basename(temp_path)
+            c.metadata["title"] = file.filename or os.path.basename(temp_path)
         
         vector_store = getattr(request.app.state, "vector_store", None)
         if vector_store:
             vector_store.add_documents(chunks)
+            try:
+                vector_store.save()
+            except Exception as save_err:
+                logger.warning(f"Could not persist vector store immediately: {save_err}")
             
         doc_id = str(uuid.uuid4())
         response = DocumentResponse(
