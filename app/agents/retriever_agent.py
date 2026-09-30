@@ -64,12 +64,32 @@ class RetrieverAgent:
         else:
             permitted_web = permitted_web and not route.get("private_context", False)
             permitted_web = permitted_web and (not filters or "web" in filters or "wikipedia" in filters or "arxiv" in filters)
-        if permitted_web and (not relevant_local or state.get("mode") == "research" or route.get("requires_fresh_evidence")):
+        # TypeSafe AI Jev System One decision: decide if web search is needed
+        from app.agents.jev_engine import JEVDecisionEngine
+        jev = JEVDecisionEngine()
+        max_local_score = max([d.get("relevance_score", 0) for d in relevant_local], default=0.0)
+        jev_search_decision = jev.decide_web_search(
+            query,
+            local_doc_count=len(relevant_local),
+            max_local_relevance=max_local_score,
+            mode=state.get("mode", "balanced"),
+            privacy_mode=state.get("privacy_mode", False)
+        )
+        state["jev_retrieval_decision"] = {
+            "need_web_search": jev_search_decision.value,
+            "search_probability": jev_search_decision.probability,
+            "confidence": jev_search_decision.confidence,
+            "latency_ms": jev_search_decision.latency_ms
+        }
+
+        should_search = permitted_web and jev_search_decision.value
+        if should_search:
             search_questions = questions[:2 if state.get("mode") == "research" else 1]
             remaining = state.get("deadline", float("inf")) - time.monotonic() - 3
             if remaining > 1.0 and search_questions:
                 import concurrent.futures
-                search_timeout = min(remaining, get_settings().SEARCH_TIMEOUT_SECONDS)
+                fast_cap = getattr(get_settings(), "FAST_MODE_SEARCH_TIMEOUT_SECONDS", 1.2)
+                search_timeout = min(remaining, fast_cap if state.get("mode") in ("fast", "quick") else get_settings().SEARCH_TIMEOUT_SECONDS)
                 actual.append("web_search")
                 
                 def _do_search(q):

@@ -72,6 +72,11 @@ class FactCheckerAgent:
                 )
         
         elapsed_ms = round((time.perf_counter() - start) * 1000, 3)
+
+        # TypeSafe AI Jev System One Grounding Verification (<5ms, zero token hallucination)
+        from app.agents.jev_engine import JEVDecisionEngine
+        jev_grounding = JEVDecisionEngine().verify_grounding(draft, [s.get("snippet", "") for s in sources])
+
         state["agent_telemetry"]["fact_checker_time_ms"] = elapsed_ms
         state["agent_telemetry"]["total_latency_ms"] = round(state["agent_telemetry"].get("total_latency_ms", 0.0) + elapsed_ms, 3)
         state["final_report"] = draft
@@ -79,6 +84,8 @@ class FactCheckerAgent:
             "status": verification_status,
             "consistency_score": consistency_score,
             "invalid_citations": diagnostics.get("invalid_citations", []),
-            "fact_checker_time_ms": elapsed_ms
+            "fact_checker_time_ms": elapsed_ms,
+            "jev_grounded_probability": jev_grounding["grounded_probability"],
+            "jev_hallucinated_probability": jev_grounding["hallucinated_probability"]
         }
         return state

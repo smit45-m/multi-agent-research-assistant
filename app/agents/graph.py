@@ -105,7 +105,7 @@ class ResearchGraph:
         store_warnings = getattr(self.vector_store, "warnings", [])
         if isinstance(store_warnings, list):
             state["warnings"].extend(store_warnings)
-        client = BoundedLLM(state["mode"], state["deadline"], backend=self.llm, disabled=state["offline"])
+        client = BoundedLLM(state["mode"], state["deadline"], backend=self.llm, disabled=state["offline"], privacy_mode=state["privacy_mode"])
         planner, analyzer, writer = PlannerAgent(client), AnalyzerAgent(client), WriterAgent(client)
         fact_checker = FactCheckerAgent(client)
         supervisor = SupervisorAgent(client)

@@ -46,8 +46,15 @@ class Settings(BaseSettings):
 
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL_NAME: str = "gemini-flash-lite-latest"
-    GEMINI_FAST_MODEL: str = "gemini-flash-lite-latest"
+    GEMINI_FAST_MODEL: str = "gemini-3.5-flash-lite"
     GEMINI_RESEARCH_MODEL: str = "gemini-3.5-flash"
+
+    # TypeSafe AI Jev (System One AI Decision Model)
+    TYPESAFE_API_KEY: Optional[str] = None
+    TYPESAFE_API_URL: str = "https://api.typesafe.ai/v1/systemone"
+    JEV_ENABLED: bool = True
+    FAST_MODE_MAX_OUTPUT_TOKENS: int = 400
+    FAST_MODE_SEARCH_TIMEOUT_SECONDS: float = 0.9
 
     # Local Open-Source LLM & Privacy Configuration (Air-Gapped)
     LOCAL_LLM_URL: str = "http://127.0.0.1:11434"

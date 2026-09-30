@@ -89,7 +89,7 @@ class ResearchRouter:
             "privacy": getattr(settings, "PRIVACY_BUDGET_SECONDS", 10.0),
         }
         caps = {
-            "fast": (4, 1, 1, 2300),
+            "fast": (3, 1, 1, 750),
             "balanced": (8, 2, 1, 3500),
             "research": (14, 4, 2, 4200),
             "privacy": (12, 2, 1, 3500),
@@ -109,6 +109,8 @@ class ResearchRouter:
                 "requires_fresh_evidence": fresh, "private_context": private,
                 "jev_score": jev_plan.get("jev_score", 0.90),
                 "jev_decision": jev_plan.get("jev_decision", ""),
+                "jev_model_source": jev_plan.get("model_source", "typesafe_ai_jev"),
+                "jev_probabilities": jev_plan.get("decision_probabilities", {}),
                 "warnings": warnings, "stages": [], "actual_retrieval": []}
 
     def route(self, query: str, depth: str = "standard", user_sources: List[str] = None) -> RoutingDecision:

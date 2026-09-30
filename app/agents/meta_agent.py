@@ -38,9 +38,9 @@ class MetaAgent:
     ) -> Dict[str, Any]:
         """
         Calculates the complete adaptive execution profile for the query
-        grounded in Joint Expected Value (JEV) optimization.
+        grounded in TypeSafe AI's Jev (System One AI Decision Model).
         """
-        # Execute JEV optimization across candidates
+        # Execute Jev System One decision optimization across candidates
         jev_plan = self.jev_engine.optimize_pipeline_config(
             query=query,
             mode=mode,
@@ -68,12 +68,13 @@ class MetaAgent:
             "selected_orchestrator": selected_engine,
             "recommended_vector_store": jev_plan["recommended_vector_store"],
             "llm_model": llm_model,
-            "jev_score": jev_plan["jev_score"],
-            "jev_decision": jev_plan["jev_decision"],
-            "expected_quality": jev_plan["expected_quality"],
-            "estimated_latency_s": jev_plan["estimated_latency_s"],
-            "candidate_evaluations": jev_plan["candidate_evaluations"],
+            "jev_score": jev_plan.get("jev_score", 0.95),
+            "jev_decision": jev_plan.get("jev_decision", "jev_sys1_decision"),
+            "expected_quality": jev_plan.get("expected_quality", 0.88),
+            "estimated_latency_s": jev_plan.get("estimated_latency_s", 2.0),
+            "model_source": jev_plan.get("model_source", "jev_system_one"),
+            "candidate_evaluations": jev_plan.get("candidate_evaluations", []),
             "enable_fact_checker": (resolved_mode == "research" or has_attachments),
             "enable_supervisor": True,
-            "summary_rationale": jev_plan["rationale"]
+            "summary_rationale": jev_plan.get("rationale", "")
         }
