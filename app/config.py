@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL_NAME: str = "gemini-flash-lite-latest"
     GEMINI_FAST_MODEL: str = "gemini-flash-lite-latest"
-    GEMINI_RESEARCH_MODEL: str = "gemini-3.5-flash"
+    GEMINI_RESEARCH_MODEL: str = "gemini-2.5-flash"
 
     # TypeSafe AI Jev & autotrust/JEV-27B (System One AI Decision Model)
     # Hugging Face: https://huggingface.co/autotrust/JEV-27B
@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     JEV_MODEL_ID: str = "autotrust/JEV-27B"
     JEV_ENDPOINT_URL: Optional[str] = None
     JEV_ENABLED: bool = True
-    FAST_MODE_MAX_OUTPUT_TOKENS: int = 280
+    FAST_MODE_MAX_OUTPUT_TOKENS: int = 800
     FAST_MODE_SEARCH_TIMEOUT_SECONDS: float = 0.8
 
     # Local Open-Source LLM & Privacy Configuration (Air-Gapped)

@@ -30,9 +30,11 @@ TASKS: Dict[str, ResearchResponse] = {}
 def _build_sources(state_sources: list) -> list:
     """Helper to format sources list into SourceInfo objects."""
     sources = []
-    for s in state_sources or []:
+    for idx, s in enumerate(state_sources or []):
+        cid = int(s.get("citation_id") or (idx + 1))
         sources.append(
             SourceInfo(
+                citation_id=cid,
                 title=s.get("title", "Reference Source"),
                 url_or_path=s.get("source", s.get("url_or_path", "")),
                 relevance_score=float(s.get("relevance_score", 0.85)),

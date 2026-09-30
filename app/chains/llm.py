@@ -67,22 +67,22 @@ class BoundedLLM:
                 result = self.backend.invoke([SystemMessage(content=system), HumanMessage(content=prompt)])
                 text = result.content
             elif self.settings.gemini_configured:
-                # Optimized candidate order: 200 OK fast models first, avoid 503/404 traps
+                # Optimized candidate order: verified Google Generative AI models
                 if self.mode in ("fast", "quick"):
-                    fast_pool = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite"]
-                    output_tokens = min(max_tokens, getattr(self.settings, "FAST_MODE_MAX_OUTPUT_TOKENS", 280))
-                    default_timeout = 3.8
-                    candidates = ["gemini-flash-lite-latest", self.model, "gemini-3.5-flash-lite"]
+                    fast_pool = ["gemini-flash-lite-latest", "gemini-2.5-flash"]
+                    output_tokens = min(max_tokens, getattr(self.settings, "FAST_MODE_MAX_OUTPUT_TOKENS", 800))
+                    default_timeout = 8.5
+                    candidates = ["gemini-flash-lite-latest", "gemini-2.5-flash"]
                 elif self.mode in ("research", "deep"):
-                    fast_pool = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-flash-lite-latest"]
+                    fast_pool = ["gemini-2.5-flash", "gemini-flash-lite-latest"]
                     output_tokens = max(max_tokens, 3000)
-                    default_timeout = 18.0
-                    candidates = [self.model] + fast_pool
+                    default_timeout = 25.0
+                    candidates = [self.model, "gemini-2.5-flash", "gemini-flash-lite-latest"]
                 else:
-                    fast_pool = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite"]
+                    fast_pool = ["gemini-flash-lite-latest", "gemini-2.5-flash"]
                     output_tokens = max(max_tokens, 1500)
-                    default_timeout = 8.0
-                    candidates = [self.model] + fast_pool
+                    default_timeout = 12.0
+                    candidates = [self.model, "gemini-flash-lite-latest", "gemini-2.5-flash"]
                 
                 candidate_models = list(dict.fromkeys([m for m in candidates if m]))
                 
@@ -107,9 +107,9 @@ class BoundedLLM:
                 client = get_shared_client()
                 for model_name in candidate_models:
                     rem_now = self.deadline - time.monotonic() if self.deadline else self.settings.LLM_TIMEOUT_SECONDS
-                    if rem_now < 1.0:
+                    if rem_now < 0.5 and text:
                         break
-                    per_try_timeout = min(rem_now, default_timeout)
+                    per_try_timeout = max(4.0, min(rem_now if rem_now > 1.0 else default_timeout, default_timeout))
                     try:
                         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
                         resp = client.post(url, headers=headers, json=body, timeout=per_try_timeout)
@@ -172,11 +172,11 @@ class BoundedLLM:
             return
 
         if self.mode in ("fast", "quick"):
-            fast_pool = ["gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite"]
+            fast_pool = ["gemini-flash-lite-latest", "gemini-2.5-flash"]
         elif self.mode in ("research", "deep"):
-            fast_pool = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-flash-lite-latest"]
+            fast_pool = ["gemini-2.5-flash", "gemini-flash-lite-latest"]
         else:
-            fast_pool = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
+            fast_pool = ["gemini-flash-lite-latest", "gemini-2.5-flash"]
 
         candidates = [self.model] + fast_pool
         candidate_models = list(dict.fromkeys([m for m in candidates if m]))

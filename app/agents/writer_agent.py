@@ -194,8 +194,8 @@ Using an ensemble multi-agent workflow (CrewAI & LangGraph with 4 autonomous age
             origin = "insufficient_evidence"
         else:
             lengths = {
-                "fast": (300, (
-                    "Provide a fast, highly-structured, explainable answer (around 150-250 words) with low latency (<5s). "
+                "fast": (800, (
+                    "Provide a fast, highly-structured, explainable answer (around 200-300 words) with low latency (<5s). "
                     "Include: "
                     "1) 🎯 Direct Core Answer, "
                     "2) 📊 Key Architecture / Feature Comparison Table (in GitHub Markdown table format), "

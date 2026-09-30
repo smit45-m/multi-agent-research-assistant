@@ -36,6 +36,7 @@ async def upload_document(
     import tempfile
     temp_dir = tempfile.gettempdir()
     temp_path = os.path.join(temp_dir, f"{uuid.uuid4()}{ext}")
+    doc_id = str(uuid.uuid4())
     try:
         async with aiofiles.open(temp_path, 'wb') as out_file:
             content = await file.read()
@@ -45,10 +46,14 @@ async def upload_document(
         for d in docs:
             d.metadata["filename"] = file.filename or os.path.basename(temp_path)
             d.metadata["title"] = file.filename or os.path.basename(temp_path)
+            d.metadata["document_id"] = doc_id
+            d.metadata["format"] = ext.lstrip(".")
         chunks = split_documents(docs, chunk_size=1000, chunk_overlap=100)
         for c in chunks:
             c.metadata["filename"] = file.filename or os.path.basename(temp_path)
             c.metadata["title"] = file.filename or os.path.basename(temp_path)
+            c.metadata["document_id"] = doc_id
+            c.metadata["format"] = ext.lstrip(".")
         
         vector_store = getattr(request.app.state, "vector_store", None)
         if vector_store:
@@ -58,7 +63,6 @@ async def upload_document(
             except Exception as save_err:
                 logger.warning(f"Could not persist vector store immediately: {save_err}")
             
-        doc_id = str(uuid.uuid4())
         response = DocumentResponse(
             document_id=doc_id,
             filename=file.filename or "unknown",
@@ -68,7 +72,7 @@ async def upload_document(
             uploaded_at=datetime.now(timezone.utc)
         )
         DOCUMENTS.append(response)
-        logger.info(f"Successfully processed and indexed document '{file.filename}' ({len(chunks)} chunks)")
+        logger.info(f"Successfully processed and indexed document '{file.filename}' ({len(chunks)} chunks, id={doc_id})")
         return response
     except Exception as e:
         logger.error(f"Document processing failed: {e}", exc_info=True)
@@ -81,20 +85,53 @@ async def upload_document(
                 pass
 
 @router.get("/", response_model=DocumentListResponse)
-async def list_documents():
-    """Lists all indexed documents."""
+async def list_documents(request: Request):
+    """Lists all indexed documents from vector store and memory."""
+    global DOCUMENTS
+    vector_store = getattr(request.app.state, "vector_store", None)
+    if vector_store:
+        all_docs = vector_store.get_all_documents()
+        doc_map = {}
+        for d in all_docs:
+            meta = d.metadata or {}
+            d_id = meta.get("document_id") or meta.get("filename") or "indexed_doc"
+            fname = meta.get("filename") or meta.get("title") or "document"
+            fmt = str(meta.get("format") or os.path.splitext(fname)[1]).lstrip(".")
+            if d_id not in doc_map:
+                doc_map[d_id] = DocumentResponse(
+                    document_id=d_id,
+                    filename=fname,
+                    format=fmt or "doc",
+                    chunk_count=1,
+                    status="processed",
+                    uploaded_at=datetime.now(timezone.utc)
+                )
+            else:
+                doc_map[d_id].chunk_count += 1
+        
+        merged_docs = list(doc_map.values())
+        return DocumentListResponse(
+            documents=merged_docs,
+            total_count=len(merged_docs)
+        )
     return DocumentListResponse(
         documents=DOCUMENTS,
         total_count=len(DOCUMENTS)
     )
 
 @router.delete("/{document_id}")
-async def delete_document(document_id: str):
-    """Deletes a document from the tracker."""
+async def delete_document(document_id: str, request: Request):
+    """Deletes a document from the tracker and vector store."""
     global DOCUMENTS
-    doc_to_delete = next((d for d in DOCUMENTS if d.document_id == document_id), None)
-    if not doc_to_delete:
-        raise HTTPException(status_code=404, detail="Document not found")
-        
-    DOCUMENTS = [d for d in DOCUMENTS if d.document_id != document_id]
+    vector_store = getattr(request.app.state, "vector_store", None)
+    if vector_store:
+        deleted = vector_store.delete_by_document_id(document_id)
+        if deleted == 0:
+            ids_to_del = [key for key, doc in vector_store._documents.items() if doc.metadata.get("filename") == document_id]
+            vector_store.delete_documents(ids_to_del)
+        try:
+            vector_store.save()
+        except Exception as e:
+            logger.warning(f"Could not persist vector store after deletion: {e}")
+    DOCUMENTS = [d for d in DOCUMENTS if d.document_id != document_id and d.filename != document_id]
     return {"message": f"Document {document_id} deleted successfully"}

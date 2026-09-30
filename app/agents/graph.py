@@ -105,7 +105,7 @@ class ResearchGraph:
         state["orchestrator"] = route["selected_orchestrator"]
         state["privacy_mode"] = (state["mode"] == "privacy" or options.get("privacy_mode", False))
         state["offline"] = self.offline or options.get("offline", False)
-        state["deadline"] = time.monotonic() + (4.9 if state["mode"] in ("fast", "quick") else max(90.0, route.get("budget_seconds", 120.0)))
+        state["deadline"] = time.monotonic() + (15.0 if state["mode"] in ("fast", "quick") else max(90.0, route.get("budget_seconds", 120.0)))
         state["routing_metadata"] = route
         state["meta_orchestration"] = meta_config
         state["warnings"].extend(route["warnings"])

@@ -135,16 +135,20 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
 
     try {
       // If user attached files directly, upload them first so the RAG index has them
+      const uploadedAttachmentIds: string[] = [];
       if (attachedFiles.length > 0) {
         for (const file of attachedFiles) {
           const form = new FormData();
           form.append('file', file);
           try {
-            await api<DocumentResponse>('/api/v1/documents/upload', {
+            const upRes = await api<DocumentResponse>('/api/v1/documents/upload', {
               method: 'POST',
               body: form,
               signal: abort.signal,
             });
+            if (upRes?.document_id) {
+              uploadedAttachmentIds.push(upRes.document_id);
+            }
           } catch (uploadErr) {
             console.warn(`File upload skipped for ${file.name}:`, uploadErr);
           }
@@ -161,6 +165,7 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
           rag_mode: ragMode,
           orchestrator: speedMode === 'fast' ? 'direct' : (speedMode === 'privacy' ? 'direct' : engine),
           privacy_mode: speedMode === 'privacy',
+          attachment_ids: uploadedAttachmentIds,
         }),
       });
 

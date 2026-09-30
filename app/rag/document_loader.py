@@ -56,23 +56,97 @@ def _add_metadata(
     return documents
 
 def _load_pdf(file_path: Path) -> List[Document]:
-    """Loads a PDF file using pypdf or pypdfium2."""
+    """Loads a PDF file using pypdf or PyMuPDF (fitz), with multimodal vision OCR fallback for slide decks / image-only PDFs."""
+    docs = []
+    # 1. Try pypdf text extraction
     try:
         from pypdf import PdfReader
         reader = PdfReader(str(file_path))
-        docs = []
         for idx, page in enumerate(reader.pages):
-            text = page.extract_text() or ""
-            if text.strip():
+            text = (page.extract_text() or "").strip()
+            if text:
                 docs.append(Document(
                     page_content=text,
                     metadata={"page": idx + 1, "source": str(file_path)}
                 ))
-        return docs if docs else [Document(page_content="", metadata={"source": str(file_path)})]
     except Exception as e:
-        logger.warning(f"pypdf loader fallback: {e}")
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-            return [Document(page_content=f.read(), metadata={"source": str(file_path)})]
+        logger.warning(f"pypdf extraction error: {e}")
+
+    # 2. If text was extracted, return it
+    total_chars = sum(len(d.page_content) for d in docs)
+    if total_chars > 80:
+        return docs
+
+    # 3. Try PyMuPDF (fitz) text extraction
+    try:
+        import fitz
+        doc = fitz.open(str(file_path))
+        fitz_docs = []
+        for idx, page in enumerate(doc):
+            t = page.get_text().strip()
+            if t:
+                fitz_docs.append(Document(
+                    page_content=t,
+                    metadata={"page": idx + 1, "source": str(file_path)}
+                ))
+        if sum(len(d.page_content) for d in fitz_docs) > 80:
+            return fitz_docs
+    except Exception as e:
+        logger.warning(f"fitz text extraction failed: {e}")
+
+    # 4. Multimodal Vision OCR Fallback (for image-based PDFs, slide decks, presentations)
+    try:
+        import fitz, base64, httpx, concurrent.futures
+        from app.config import get_settings
+        settings = get_settings()
+        if settings.gemini_configured:
+            doc = fitz.open(str(file_path))
+            logger.info(f"PDF {file_path.name} contains no embedded text. Running multimodal Gemini Vision OCR on {len(doc)} pages...")
+            
+            def ocr_page(page_idx):
+                for attempt in range(3):
+                    try:
+                        page = doc[page_idx]
+                        pix = page.get_pixmap(dpi=85)
+                        b64_img = base64.b64encode(pix.tobytes("jpeg")).decode("utf-8")
+                        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key={settings.GEMINI_API_KEY}"
+                        body = {
+                            "contents": [{
+                                "parts": [
+                                    {"inlineData": {"mimeType": "image/jpeg", "data": b64_img}},
+                                    {"text": "Transcribe all text from this presentation slide. Format headings with #, bullet points with -, and tables with Markdown syntax. Preserve all quotes, numbers, code snippets, and technical terms."}
+                                ]
+                            }]
+                        }
+                        r = httpx.post(url, json=body, timeout=25.0)
+                        if r.status_code == 200:
+                            content = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                            if content:
+                                return Document(
+                                    page_content=f"## Slide / Page {page_idx + 1}\n\n{content}",
+                                    metadata={"page": page_idx + 1, "source": str(file_path), "format": ".pdf"}
+                                )
+                        elif r.status_code == 429:
+                            import time
+                            time.sleep(1.0 * (attempt + 1))
+                    except Exception as page_err:
+                        import time
+                        time.sleep(0.8 * (attempt + 1))
+                        logger.debug(f"Vision OCR retry {attempt+1} for page {page_idx + 1}: {page_err}")
+                return None
+
+            workers = min(max(len(doc), 1), 8)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+                ocr_results = list(executor.map(ocr_page, range(len(doc))))
+
+            valid_ocr_docs = [d for d in ocr_results if d is not None]
+            if valid_ocr_docs:
+                logger.info(f"Successfully transcribed {len(valid_ocr_docs)} slide pages from {file_path.name}")
+                return valid_ocr_docs
+    except Exception as vision_err:
+        logger.warning(f"Multimodal vision OCR failed for {file_path}: {vision_err}")
+
+    return docs if docs else [Document(page_content="", metadata={"source": str(file_path)})]
 
 def _load_docx(file_path: Path) -> List[Document]:
     """Loads a docx file using python-docx."""
