@@ -20,15 +20,18 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, theme, 
     <nav className="navbar">
       <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
         <a href="#" className="nav-brand" onClick={(e) => { e.preventDefault(); setActiveTab('studio'); }}>
-          <div className="anthropic-logo" style={{ color: 'var(--brand-primary)', display: 'flex', alignItems: 'center' }}>
-            <svg height="20" viewBox="0 0 35 24" fill="currentColor">
-              <path d="M24.5475 0H19.3384L28.8374 24H34.0465L24.5475 0Z" fill="currentColor" />
-              <path d="M9.49897 0L0 24H5.31125L7.25395 18.96H17.1914L19.1341 24H24.4454L14.9464 0H9.49897ZM8.97193 14.5029L12.2227 6.06857L15.4735 14.5029H8.97193Z" fill="currentColor" />
+          <div className="brand-icon-wrapper" style={{ width: 32, height: 32 }}>
+            <svg className="brand-icon-svg" style={{ width: 20, height: 20 }} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="3.2" className="brand-icon-core" />
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+                className="brand-icon-teeth"
+              />
             </svg>
           </div>
-          <div className="brand-meta">
-            <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.15rem', fontWeight: 500, letterSpacing: '-0.01em' }}>
-              Anthropic <span style={{ color: 'var(--brand-primary)', fontWeight: 300 }}>\ Research</span>
+          <div className="brand-meta" style={{ marginLeft: 10 }}>
+            <h1 style={{ fontFamily: 'var(--heading)', fontSize: '1.15rem', fontWeight: 700, letterSpacing: '-0.02em', margin: 0 }}>
+              ScholarAgent <span style={{ color: 'var(--brand-primary)', fontWeight: 400 }}>\ Research</span>
             </h1>
           </div>
         </a>

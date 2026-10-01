@@ -233,13 +233,139 @@ button svg { pointer-events: none; }
   width: 0 !important;
   height: 0 !important;
 }
-.brand { display: flex; align-items: center; gap: 12px; padding: 0 10px; color: var(--text); font-family: var(--heading); font-size: 23px; font-weight: 800; letter-spacing: -.8px; line-height: 1.25; }
-.brand:hover { text-decoration: none; }
-.brand small { display: block; margin-top: 6px; color: var(--muted); font-family: var(--font); font-size: 8px; font-weight: 600; letter-spacing: 1.65px; }
-.brand-dot { color: var(--accent); }
-.brand-symbol { display: grid; grid-template-columns: 9px 9px; gap: 3px; transform: rotate(-12deg); }
-.brand-symbol span { width: 9px; height: 13px; background: var(--accent); border-radius: 3px; }
-.brand-symbol span:nth-child(2), .brand-symbol span:nth-child(3) { opacity: .5; }
+/* Brand Banner Styling */
+.brand-banner-container {
+  padding: 0 4px;
+  margin-bottom: 6px;
+}
+
+.brand-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, rgba(30, 27, 75, 0.45) 0%, rgba(15, 23, 42, 0.65) 100%);
+  border: 1px solid rgba(129, 140, 248, 0.22);
+  border-radius: 12px;
+  text-decoration: none;
+  transition: all 0.22s ease-in-out;
+  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.08);
+}
+
+[data-theme='light'] .brand-banner {
+  background: linear-gradient(135deg, rgba(238, 242, 255, 0.85) 0%, rgba(245, 243, 255, 0.95) 100%);
+  border-color: rgba(129, 140, 248, 0.35);
+  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.06);
+}
+
+.brand-banner:hover {
+  border-color: rgba(129, 140, 248, 0.55);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 18px rgba(99, 102, 241, 0.2);
+  text-decoration: none;
+}
+
+.brand-icon-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: radial-gradient(circle at center, rgba(129, 140, 248, 0.25) 0%, rgba(99, 102, 241, 0.1) 70%);
+  border: 1px solid rgba(129, 140, 248, 0.32);
+  box-shadow: 0 0 12px rgba(129, 140, 248, 0.25);
+  flex-shrink: 0;
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.brand-banner:hover .brand-icon-wrapper {
+  transform: rotate(20deg) scale(1.08);
+  box-shadow: 0 0 18px rgba(129, 140, 248, 0.45);
+}
+
+.brand-icon-svg {
+  width: 23px;
+  height: 23px;
+  display: block;
+}
+
+.brand-icon-core {
+  stroke: #818cf8;
+  stroke-width: 2;
+  fill: #a855f7;
+  fill-opacity: 0.35;
+}
+
+.brand-icon-teeth {
+  stroke: #818cf8;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke 0.2s ease;
+}
+
+.brand-banner:hover .brand-icon-teeth {
+  stroke: #a78bfa;
+}
+
+.brand-text-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.brand-primary-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.brand-name {
+  font-family: var(--heading);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.brand-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 1px 6px;
+  border-radius: 9999px;
+  line-height: 1.3;
+}
+
+.brand-badge::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 5px #10b981;
+}
+
+.brand-subtext {
+  font-family: var(--font);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  line-height: 1.3;
+}
 .new-research { display: flex; align-items: center; gap: 9px; width: 100%; background: var(--panel-strong); border: 1px solid var(--border); border-radius: 8px; margin: 18px 0 14px; padding: 11px 13px; font-size: 12px; font-weight: 600; }
 .new-research:hover { background: var(--hover); border-color: var(--muted); }
 .tiny-plus { margin-left: auto; font-size: 12px; color: var(--muted); border: 1px solid var(--border); width: 17px; line-height: 15px; border-radius: 3px; }
