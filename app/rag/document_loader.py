@@ -56,9 +56,25 @@ def _add_metadata(
     return documents
 
 def _load_pdf(file_path: Path) -> List[Document]:
-    """Loads a PDF file using pypdf or PyMuPDF (fitz), with multimodal vision OCR fallback for slide decks / image-only PDFs."""
+    """Loads a PDF file using high-speed PyMuPDF (fitz) with pypdf and multimodal vision OCR fallbacks."""
     docs = []
-    # 1. Try pypdf text extraction
+    # 1. High-speed C/C++ PyMuPDF (fitz) text extraction (~1.2s for 600+ pages)
+    try:
+        import fitz
+        doc = fitz.open(str(file_path))
+        for idx, page in enumerate(doc):
+            t = page.get_text().strip()
+            if t:
+                docs.append(Document(
+                    page_content=t,
+                    metadata={"page": idx + 1, "source": str(file_path)}
+                ))
+        if sum(len(d.page_content) for d in docs) > 80:
+            return docs
+    except Exception as e:
+        logger.debug(f"fitz text extraction failed or not available ({e}), trying pypdf")
+
+    # 2. Pure-Python pypdf text extraction fallback
     try:
         from pypdf import PdfReader
         reader = PdfReader(str(file_path))
@@ -69,36 +85,45 @@ def _load_pdf(file_path: Path) -> List[Document]:
                     page_content=text,
                     metadata={"page": idx + 1, "source": str(file_path)}
                 ))
+        if sum(len(d.page_content) for d in docs) > 80:
+            return docs
     except Exception as e:
         logger.warning(f"pypdf extraction error: {e}")
 
-    # 2. If text was extracted, return it
-    total_chars = sum(len(d.page_content) for d in docs)
-    if total_chars > 80:
-        return docs
-
-    # 3. Try PyMuPDF (fitz) text extraction
-    try:
-        import fitz
-        doc = fitz.open(str(file_path))
-        fitz_docs = []
-        for idx, page in enumerate(doc):
-            t = page.get_text().strip()
-            if t:
-                fitz_docs.append(Document(
-                    page_content=t,
-                    metadata={"page": idx + 1, "source": str(file_path)}
-                ))
-        if sum(len(d.page_content) for d in fitz_docs) > 80:
-            return fitz_docs
-    except Exception as e:
-        logger.warning(f"fitz text extraction failed: {e}")
-
     # 4. Multimodal Vision OCR Fallback (for image-based PDFs, slide decks, presentations)
     try:
-        import fitz, base64, httpx, concurrent.futures
+        import fitz, base64, httpx, concurrent.futures, hashlib
         from app.config import get_settings
         settings = get_settings()
+
+        # Check disk cache by SHA-256
+        ocr_cache_dir = Path("data/ocr_cache")
+        ocr_cache_dir.mkdir(parents=True, exist_ok=True)
+        file_hash = None
+        ocr_cache_file = None
+        try:
+            h = hashlib.sha256()
+            with open(file_path, "rb") as f:
+                while chunk := f.read(65536):
+                    h.update(chunk)
+            file_hash = h.hexdigest()
+            ocr_cache_file = ocr_cache_dir / f"{file_hash}.json"
+            if ocr_cache_file.exists():
+                with open(ocr_cache_file, "r", encoding="utf-8") as f:
+                    cached_records = json.load(f)
+                logger.info(f"Loaded OCR cache for {file_path.name} ({len(cached_records)} pages, SHA-256: {file_hash[:8]}...) in 2ms")
+                cached_docs = [
+                    Document(
+                        page_content=rec["page_content"],
+                        metadata=rec.get("metadata", {"page": idx + 1, "source": str(file_path), "format": ".pdf"})
+                    )
+                    for idx, rec in enumerate(cached_records)
+                ]
+                if cached_docs:
+                    return cached_docs
+        except Exception as cache_err:
+            logger.debug(f"OCR cache lookup error: {cache_err}")
+
         if settings.gemini_configured:
             doc = fitz.open(str(file_path))
             logger.info(f"PDF {file_path.name} contains no embedded text. Running multimodal Gemini Vision OCR on {len(doc)} pages...")
@@ -142,6 +167,18 @@ def _load_pdf(file_path: Path) -> List[Document]:
             valid_ocr_docs = [d for d in ocr_results if d is not None]
             if valid_ocr_docs:
                 logger.info(f"Successfully transcribed {len(valid_ocr_docs)} slide pages from {file_path.name}")
+                if ocr_cache_file:
+                    try:
+                        with open(ocr_cache_file, "w", encoding="utf-8") as f:
+                            json.dump(
+                                [{"page_content": d.page_content, "metadata": d.metadata} for d in valid_ocr_docs],
+                                f,
+                                ensure_ascii=False,
+                                indent=2
+                            )
+                        logger.info(f"Saved OCR cache for {file_path.name} to {ocr_cache_file}")
+                    except Exception as save_err:
+                        logger.warning(f"Failed to persist OCR cache: {save_err}")
                 return valid_ocr_docs
     except Exception as vision_err:
         logger.warning(f"Multimodal vision OCR failed for {file_path}: {vision_err}")
@@ -230,12 +267,28 @@ def _load_text_or_code(file_path: Path) -> List[Document]:
     return [Document(page_content=content, metadata={"source": str(file_path)})]
 
 def _load_image(file_path: Path) -> List[Document]:
-    """Loads image and extracts structured multimodal visual knowledge."""
+    """Loads image and extracts structured multimodal visual knowledge with disk caching."""
     try:
+        import hashlib
+        ocr_cache_dir = Path("data/ocr_cache")
+        ocr_cache_dir.mkdir(parents=True, exist_ok=True)
         with open(file_path, "rb") as f:
             content = f.read()
+        img_hash = hashlib.sha256(content).hexdigest()
+        cache_file = ocr_cache_dir / f"img_{img_hash}.txt"
+        if cache_file.exists():
+            text = cache_file.read_text(encoding="utf-8")
+            logger.info(f"Loaded image analysis from cache for {file_path.name} in 1ms")
+            return [Document(
+                page_content=f"# Image: {file_path.name}\n\n{text}",
+                metadata={"source": str(file_path), "format": file_path.suffix.lower(), "title": file_path.name, "source_type": "image"}
+            )]
         from app.tools.media_input import understand_media
         kind, text = understand_media(file_path.name, content)
+        try:
+            cache_file.write_text(text, encoding="utf-8")
+        except Exception:
+            pass
         return [Document(
             page_content=f"# Image: {file_path.name}\n\n{text}",
             metadata={"source": str(file_path), "format": file_path.suffix.lower(), "title": file_path.name, "source_type": "image"}

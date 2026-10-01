@@ -283,7 +283,7 @@ def execute_research_sync(
                 telemetry=tel,
                 created_at=datetime.now(timezone.utc)
             )
-            if cache_key is not None:
+            if cache_key is not None and res.answer_origin in ("llm_grounded", "llm_general"):
                 with _SYNTHESIS_CACHE_LOCK:
                     _SYNTHESIS_CACHE[cache_key] = (now, res)
             return res
@@ -355,48 +355,83 @@ def execute_research_stream(
     def event_stream():
         task_id = str(uuid.uuid4())
         start_t = time.perf_counter()
-        yield f"data: {json.dumps({'type': 'stage', 'stage': 'plan', 'message': 'Planner Agent decomposing query and intent...'})}\n\n"
-        
+        import queue
+        import threading
+
+        event_queue = queue.Queue()
+
+        def on_stage(stage, message):
+            event_queue.put({"type": "stage", "stage": stage, "message": message})
+
+        def on_token(token):
+            event_queue.put({"type": "token", "token": token})
+
+        # Initial stage
+        on_stage("plan", "Planner Agent decomposing query and intent...")
+
         graph = getattr(request.app.state, "research_graph", None)
         if graph is None:
             from app.agents.graph import ResearchGraph
             vstore = getattr(request.app.state, "vector_store", None)
             graph = ResearchGraph(vstore)
 
-        yield f"data: {json.dumps({'type': 'stage', 'stage': 'retrieve', 'message': 'Retriever Agent querying Hybrid RAG and web sources...'})}\n\n"
-        
-        state = graph.run(
-            query_obj.query,
-            rag_mode=query_obj.rag_mode,
-            mode=query_obj.mode,
-            depth=query_obj.depth,
-            orchestrator=query_obj.orchestrator,
-            max_sources=query_obj.max_sources,
-            source_filters=query_obj.source_filters,
-            web_search=query_obj.web_search,
-            strict_grounding=query_obj.strict_grounding,
-            attachment_ids=query_obj.attachment_ids
-        )
+        result_holder = {}
+        error_holder = {}
+
+        def worker():
+            try:
+                st = graph.run(
+                    query_obj.query,
+                    rag_mode=query_obj.rag_mode,
+                    mode=query_obj.mode,
+                    depth=query_obj.depth,
+                    orchestrator=query_obj.orchestrator,
+                    max_sources=query_obj.max_sources,
+                    source_filters=query_obj.source_filters,
+                    web_search=query_obj.web_search,
+                    strict_grounding=query_obj.strict_grounding,
+                    attachment_ids=query_obj.attachment_ids,
+                    privacy_mode=query_obj.privacy_mode,
+                    on_token=on_token,
+                    on_stage=on_stage
+                )
+                result_holder["state"] = st
+            except Exception as e:
+                logger.error(f"Streaming research worker error: {e}", exc_info=True)
+                error_holder["error"] = e
+            finally:
+                event_queue.put(None)
+
+        worker_thread = threading.Thread(target=worker, daemon=True)
+        worker_thread.start()
+
+        accumulated = ""
+        while True:
+            try:
+                item = event_queue.get(timeout=60.0)
+            except queue.Empty:
+                break
+            if item is None:
+                break
+            if item.get("type") == "token":
+                accumulated += item.get("token", "")
+                item["accumulated"] = accumulated
+            yield f"data: {json.dumps(item)}\n\n"
+
+        if "error" in error_holder:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(error_holder['error'])})}\n\n"
+            return
+
+        state = result_holder.get("state", {})
         elapsed = time.perf_counter() - start_t
         sources = _build_sources(state.get("sources_cited", []))
         tel = _build_telemetry(state.get("agent_telemetry", {}))
         conf = float(state.get("confidence_score") or 0.88)
         acc = float(state.get("response_accuracy_score") or 0.875)
         speedup = float(state.get("synthesis_speedup_ratio") or 0.60)
-        report = state.get("final_report", "")
+        report = state.get("final_report", "") or accumulated
 
-        yield f"data: {json.dumps({'type': 'stage', 'stage': 'supervise', 'message': 'Supervisor Agent balanced trade-offs and formatted comparison table...'})}\n\n"
         yield f"data: {json.dumps({'type': 'metadata', 'sources': [s.model_dump() for s in sources], 'confidence_score': conf, 'accuracy_score': acc})}\n\n"
-
-        import re
-        chunks = re.split(r'(\n\n|\n)', report)
-        accumulated = ""
-        for chunk in chunks:
-            if not chunk:
-                continue
-            accumulated += chunk
-            yield f"data: {json.dumps({'type': 'token', 'token': chunk, 'accumulated': accumulated})}\n\n"
-            time.sleep(0.008)
 
         res = ResearchResponse(
             task_id=task_id,
@@ -408,7 +443,7 @@ def execute_research_stream(
             response_accuracy_score=max(acc, 0.85),
             synthesis_speedup_ratio=speedup,
             processing_time_seconds=round(elapsed, 2),
-            orchestrator=query_obj.orchestrator,
+            orchestrator=state.get("orchestrator", query_obj.orchestrator),
             telemetry=tel,
             created_at=datetime.now(timezone.utc)
         )

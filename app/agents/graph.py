@@ -112,22 +112,38 @@ class ResearchGraph:
         store_warnings = getattr(self.vector_store, "warnings", [])
         if isinstance(store_warnings, list):
             state["warnings"].extend(store_warnings)
+        on_token = options.get("on_token")
+        on_stage = options.get("on_stage")
+        state["on_token"] = on_token
+        state["on_stage"] = on_stage
+
         client = BoundedLLM(state["mode"], state["deadline"], backend=self.llm, disabled=state["offline"], privacy_mode=state["privacy_mode"])
         planner, analyzer, writer = PlannerAgent(client), AnalyzerAgent(client), WriterAgent(client)
+        writer.on_token = on_token
         fact_checker = FactCheckerAgent(client)
         supervisor = SupervisorAgent(client)
         retriever = RetrieverAgent(self.vector_store, self.search_tool or WebSearchTool(), min_relevance=self.min_relevance)
         if state["orchestrator"] == "direct":
             state["sub_questions"] = [query]
             state["research_plan"] = {"objective": query, "sub_questions": [query], "method": "direct"}
+            if on_stage:
+                on_stage("plan", "Planner Agent decomposing query and intent...")
             state["routing_metadata"]["stages"].append("retrieve")
+            if on_stage:
+                on_stage("retrieve", "Retriever Agent querying Hybrid RAG and web sources...")
             state = retriever.retrieve(state)
+            if on_stage:
+                on_stage("analyze", "Analyzer Agent connecting findings & themes...")
             state = analyzer.analyze(state)
             state["routing_metadata"]["stages"].append("write")
+            if on_stage:
+                on_stage("write", "Writer Agent synthesizing grounded research report...")
             state = writer.write(state)
             state["routing_metadata"]["stages"].append("fact_checker")
             state = fact_checker.verify(state)
             state["routing_metadata"]["stages"].append("supervise")
+            if on_stage:
+                on_stage("supervise", "Supervisor Agent verifying citations and trade-offs...")
             state = supervisor.supervise(state)
             if state["mode"] == "research" and not state.get("reviewed"):
                 state["routing_metadata"]["stages"].append("review")

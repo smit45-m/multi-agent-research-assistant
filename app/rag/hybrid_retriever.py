@@ -156,8 +156,8 @@ class HybridRetriever:
                     return result
 
             dense_available = getattr(self.vector_store, "dense_available", False) is True
-            use_dense = mode not in {"bm25", "vectorless", "hierarchical"} and dense_available
-            if mode in {"hybrid", "rrf", "multi_query", "agentic", "vector"} and not dense_available:
+            use_dense = mode not in {"bm25", "vectorless"} and dense_available
+            if mode in {"hybrid", "rrf", "multi_query", "agentic", "vector", "hierarchical"} and not dense_available:
                 warnings.append("Dense semantic retrieval is unavailable; used BM25 rather than pretending to run embeddings.")
             queries = self.generate_multi_queries(query) if mode in {"multi_query", "agentic"} else [query]
             lists = []
@@ -172,15 +172,31 @@ class HybridRetriever:
                     lists.append(sparse.search(question, max(top_k * 3, 12)))
             fused = self.reciprocal_rank_fusion(lists, max(top_k * 4, 20))
             ranked = []
+            seen_chunk_signatures = []
             for doc in fused:
                 lexical = relevance(query, doc.page_content, str(doc.metadata.get("title", "")))
                 semantic = float(doc.metadata.get("dense_score", 0))
-                # Independent relevance gate: RRF rank alone is not relevance/confidence.
-                if lexical < self.min_relevance and semantic < 0.50:
+                rrf_score = float(doc.metadata.get("rrf_score", 0))
+                # Soft relevance gate: retain documents with decent lexical, semantic, or strong RRF support
+                if lexical < self.min_relevance and semantic < 0.35 and rrf_score < 0.012:
                     continue
-                score = max(lexical, 0.85 * semantic)
-                doc.metadata["relevance_score"] = score
-                ranked.append((score + 0.25 * doc.metadata.get("rrf_score", 0), doc))
+                score = max(lexical, 0.85 * semantic, rrf_score * 12.0)
+                doc.metadata["relevance_score"] = min(1.0, round(score, 3))
+
+                # Diversity filtering / Deduplication: prevent returning near-duplicate passages
+                clean_words = set(re.findall(r"\w{4,}", doc.page_content.lower()))
+                is_duplicate = False
+                for prev in seen_chunk_signatures:
+                    if clean_words and prev:
+                        overlap = len(clean_words & prev) / min(len(clean_words), len(prev))
+                        if overlap > 0.85:
+                            is_duplicate = True
+                            break
+                if is_duplicate:
+                    continue
+                seen_chunk_signatures.append(clean_words)
+
+                ranked.append((score + 0.25 * rrf_score, doc))
             ranked.sort(key=lambda item: item[0], reverse=True)
             result = [doc for _, doc in ranked[:top_k]]
             if mode == "hierarchical":

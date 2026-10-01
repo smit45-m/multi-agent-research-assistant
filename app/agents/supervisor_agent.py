@@ -16,14 +16,17 @@ from app.agents.jev_engine import JEVDecisionEngine
 SUPERVISOR_SYSTEM_PROMPT = """You are the Lead Research Supervisor & Quality Orchestrator.
 Your mission is to balance and elevate the collective work of the Planner, Retriever, Analyzer, and Writer agents.
 Review the research draft and evidence, then produce a polished, high-value final report that meets these strict standards:
-1. Clear Pointwise Explanations: Format key findings as crisp, well-structured bullet points with bold conceptual anchors and relevant emojis (e.g., 🔍, ⚡, 📊, 🛡️, 💡, 🏆, ⚙️).
-2. Comparison Table: Include at least one well-formatted Markdown comparison table contrasting key dimensions, techniques, pros/cons, or metrics.
-3. Deep Explainability & Practical Implications: Include a dedicated section explaining WHY things work the way they do, core trade-offs, and when to use what.
-4. Grounding & Truthfulness: Ensure claims are grounded in the retrieved sources or clearly labeled. Do not invent fake benchmark percentages or unverified citations.
-5. Mode Alignment:
-   - For fast/low-latency mode: Be crisp, focused, direct, and concise (300-600 words).
-   - For detailed research mode: Provide comprehensive multi-dimensional depth, architectural trade-offs, and nuanced edge cases (700-1500 words).
-Preserve or enhance all source citations with [Doc: ...] or markdown links.
+1. Understand and Answer the Question: Answer the user's actual question directly in the first section. Do not restate the prompt or describe the internal RAG pipeline.
+2. Structure & Pointwise Explanations: Use a clear hierarchy (# Main Topic -> ## 🎯 Core Idea -> ## ⚙️ How It Works -> ## 💡 Concrete Example -> ## 🔑 Key Takeaways). Use numbered steps and focused bullet points rather than giant walls of text.
+3. Comparison Table: When comparing methods, options, or trade-offs, include a clean GitHub Markdown table.
+4. Examples & Code/Formulas: Ensure technical explanations follow Concept → Intuition → Example → Technical detail. Clearly define variables in formulas and state time/space complexity for algorithms.
+5. Visual Formatting: Use **Bold** for anchors, `code` for identifiers, blockquotes for key definitions, and tasteful emojis (🎯, ⚙️, 💡, 📊, ⚡, ✅, ❌, ⚠️, 🔑) naturally and sparingly.
+6. Grounding & Truthfulness: Ensure claims are grounded in retrieved sources [1], [2]. Never invent benchmark scores, fake citations, or consensus. Clearly distinguish Facts from Inferences.
+7. Brutal Honesty: Directly correct common misconceptions and pitfalls without flattery.
+8. Mode Alignment:
+   - For fast/low-latency mode: Be crisp, focused, direct, and concise (250-450 words).
+   - For detailed research mode: Provide comprehensive multi-dimensional depth, architectural trade-offs, and progressive explanations (700-1500 words).
+Preserve all valid source citations [1], [2] immediately following supported claims.
 """
 
 
@@ -153,35 +156,54 @@ class SupervisorAgent:
         Deterministically injects structured comparison tables, pointwise bullet points,
         emojis, and explainability trade-offs into the report when offline or on fallback.
         """
-        if bool(re.search(r"\|[ \t]*[-:]{3,}[ \t]*\|", draft)):
-            return draft  # Already has table
+        has_table = bool(re.search(r"\|[ \t]*[-:]{3,}[ \t]*\|", draft))
+        table_md = "" if has_table or len(draft.strip()) > 300 else self._build_comparison_table(query, sources)
 
-        table_md = self._build_comparison_table(query, sources)
-        explainability_md = self._build_explainability_section(query, mode)
+        has_explain = bool(re.search(r"(Explainability|Trade-offs?|Practical Takeaways|Key Takeaways?|Takeaways?|Pitfalls?|Mistakes?)", draft, re.IGNORECASE))
+        explainability_md = "" if (has_explain or len(draft.strip()) > 400) else self._build_explainability_section(query, mode)
 
-        # Inject table after Executive Summary or Detailed Findings
-        if "## Thematic Analysis" in draft:
-            parts = draft.split("## Thematic Analysis", 1)
-            enriched = f"{parts[0]}{table_md}\n\n## Thematic Analysis{parts[1]}"
-        elif "# Detailed Findings" in draft:
-            parts = draft.split("# Detailed Findings", 1)
-            enriched = f"{parts[0]}# Detailed Findings\n\n{table_md}\n{parts[1]}"
-        else:
-            enriched = f"{draft}\n\n{table_md}"
+        enriched = draft
+        if table_md:
+            if "## Thematic Analysis" in enriched:
+                parts = enriched.split("## Thematic Analysis", 1)
+                enriched = f"{parts[0]}{table_md}\n\n## Thematic Analysis{parts[1]}"
+            elif "# Detailed Findings" in enriched:
+                parts = enriched.split("# Detailed Findings", 1)
+                enriched = f"{parts[0]}# Detailed Findings\n\n{table_md}\n{parts[1]}"
+            elif "---" in enriched:
+                parts = enriched.split("---", 1)
+                enriched = f"{parts[0]}---\n{table_md}\n\n---{parts[1]}"
+            else:
+                enriched = f"{enriched}\n\n{table_md}"
 
-        # Append Explainability section before Methodology or Citations
-        if "# Methodology & Retrieval Architecture" in enriched:
-            parts = enriched.split("# Methodology & Retrieval Architecture", 1)
-            enriched = f"{parts[0]}{explainability_md}\n\n# Methodology & Retrieval Architecture{parts[1]}"
-        else:
-            enriched = f"{enriched}\n\n{explainability_md}"
+        if explainability_md:
+            if "# Methodology & Retrieval Architecture" in enriched:
+                parts = enriched.split("# Methodology & Retrieval Architecture", 1)
+                enriched = f"{parts[0]}{explainability_md}\n\n# Methodology & Retrieval Architecture{parts[1]}"
+            elif "### 📚 Grounded References" in enriched:
+                parts = enriched.split("### 📚 Grounded References", 1)
+                enriched = f"{parts[0]}{explainability_md}\n\n### 📚 Grounded References{parts[1]}"
+            else:
+                enriched = f"{enriched}\n\n{explainability_md}"
 
         return enriched
 
     def _build_comparison_table(self, query: str, sources: List[Dict[str, Any]]) -> str:
         """Generates a structured comparison table tailored to the query domain."""
         q_lower = query.lower()
-        if "rag" in q_lower or "retrieval-augmented" in q_lower or "retrieval augmented" in q_lower:
+        if any(k in q_lower for k in ("cyber", "security", "threat", "attack", "malware", "phish", "hack", "network")):
+            return """
+### 📊 Key Cybersecurity Threat Vectors & Defense Matrix
+
+| Attack / Threat Vector | Threat Mechanism | Primary Security Impact | Core Mitigation & Defense |
+| :--- | :--- | :--- | :--- |
+| **Malware & Botnets** | Worms, trojans, and rootkits self-propagating across systems | System takeover, data exfiltration, stealth persistence | Endpoint Detection & Response (EDR), regular patching, sandboxing |
+| **Phishing & Social Eng.** | Deceptive communications targeting human trust | Credential theft, unauthorized network access | Multi-Factor Authentication (MFA), email filtering (SPF/DKIM), security training |
+| **Distributed Denial of Service (DDoS)** | Coordinated botnet traffic flooding network bandwidth | Service outage, host downtime, lost availability | Anycast traffic routing, cloud DDoS scrubbers, upstream rate limiting |
+| **Address Spoofing (ARP Poisoning)** | Poisoning local ARP cache to intercept LAN traffic | Man-in-the-Middle (MitM) eavesdropping, session hijacking | Dynamic ARP Inspection (DAI), static ARP mapping, end-to-end TLS |
+| **Privilege Escalation & Rootkits** | Local/remote backdoors maintaining persistent access | Complete administrative control, hidden surveillance | Secure Boot, kernel integrity monitoring, Perfect Forward Secrecy (PFS) |
+"""
+        elif "rag" in q_lower or "retrieval-augmented" in q_lower or "retrieval augmented" in q_lower:
             return """
 ### 📊 Retrieval-Augmented Generation (RAG) Architecture Matrix
 
@@ -218,26 +240,51 @@ class SupervisorAgent:
 """
         else:
             return f"""
-### 📊 Comparative Analysis Matrix
+### 📊 Strategic Comparison Matrix: {query.title()}
 
-| Evaluation Dimension | ⚡ Fast / Low-Latency Approach | 🔬 Deep Research Approach | 💡 Recommended Hybrid Balance |
+| Key Dimension | Foundational Approach | Advanced / Enterprise Standard | Practical Recommendation |
 | :--- | :--- | :--- | :--- |
-| **Execution Latency** | Sub-2.0s response budget | Comprehensive iterative review (5–12s) | Adaptive routing based on intent (3.2s avg) |
-| **Evidence Grounding** | Direct top-k passage extraction | Cross-source consensus & conflict critique | Dual-layer lexical + semantic reciprocal ranking |
-| **Structural Depth** | Pointwise key takeaways & tables | Multi-faceted trade-offs & edge cases | Pointwise insights, tables, and citations |
-| **Ideal Context** | Real-time queries, instant lookup | Literature review, complex decision making | Production enterprise research assistant |
+| **Core Methodology** | Baseline standard practices | Adaptive, automated orchestration | Implement defense-in-depth with continuous monitoring |
+| **Implementation Complexity** | Low barrier to entry, rapid setup | High customization, multi-tier controls | Phase implementation from essentials to advanced safeguards |
+| **Resilience & Scalability** | Suitable for basic operational needs | Resilient against complex failure modes | Automate validation and enforce strict access boundaries |
 """
 
     def _build_explainability_section(self, query: str, mode: str) -> str:
         """Constructs an explainability and trade-offs breakdown."""
-        return """
+        q_lower = query.lower()
+        if any(k in q_lower for k in ("cyber", "security", "threat", "attack", "malware", "phish", "hack")):
+            return """
+---
+
+# 💡 Security Trade-offs & Implementation Strategy
+
+- **🎯 Usability vs. Security**: Tight security controls (e.g. strict MFA, zero-trust policies) must be balanced with user experience to avoid shadow IT workarounds.
+- **⚡ Proactive vs. Reactive Controls**:
+  - *Proactive Defense*: Regular vulnerability patching, network segmentation, and employee training prevent intrusions before they occur.
+  - *Reactive Capabilities*: Automated incident response, isolated offline backups, and continuous logging enable rapid containment if a breach succeeds.
+- **🛡️ Defense in Depth**: No single security tool guarantees 100% protection; resilience relies on layered defenses across network, endpoint, and identity perimeters.
+"""
+        elif any(k in q_lower for k in ("rag", "retriev", "search", "vector", "ai")):
+            return """
 ---
 
 # 💡 Explainability & Architectural Trade-offs
 
-- **🎯 Why This Method Matters**: Real-world knowledge retrieval demands balancing high precision (matching specific keywords, IDs, and definitions) with high recall (understanding abstract concepts and intent).
+- **🎯 Precision vs. Recall**: Real-world knowledge retrieval demands balancing high precision (matching specific keywords, IDs, and definitions) with high recall (understanding abstract concepts and intent).
 - **⚡ Latency vs. Depth Trade-off**:
   - *Low-Latency Mode*: Delivers instant responses by executing parallelized single-hop retrieval with pre-computed embeddings.
   - *Deep Research Mode*: Executes iterative multi-hop query expansion, cross-source conflict resolution, and supervisory critique.
 - **🛡️ Hallucination Safeguards**: Every synthesis block is anchored to verified passage IDs. Unsupported extrapolations are systematically suppressed.
+"""
+        else:
+            return f"""
+---
+
+# 💡 Core Trade-offs & Practical Considerations
+
+- **🎯 Foundational Principle**: Strategic implementations require balancing implementation complexity against operational resilience.
+- **⚡ Immediate vs. Long-Term Value**:
+  - *Immediate Focus*: Implement core baselines, standards, and verified controls.
+  - *Long-Term Roadmap*: Continuously monitor, audit, and iterate based on real-world feedback and emerging standards.
+- **🛡️ Quality Assurance**: Validate outcomes against verified benchmarks and maintain continuous verification.
 """

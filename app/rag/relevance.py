@@ -11,7 +11,7 @@ def stem(word: str) -> str:
     word = word.lower().strip()
     if word.endswith("ies") and len(word) > 4:
         return word[:-3] + "y"
-    for suffix in ("ing", "tion", "tions", "ment", "ments", "ness", "able", "ible", "ed", "es", "s"):
+    for suffix in ("tions", "tion", "sions", "sion", "ments", "ment", "ness", "able", "ible", "ing", "ed", "es", "s"):
         if word.endswith(suffix) and len(word) - len(suffix) >= 3:
             return word[:-len(suffix)]
     return word
@@ -39,10 +39,49 @@ def relevance(query: str, text: str, title: str = "") -> float:
     return min(1.0, 0.72 * overlap + 0.18 * title_overlap + 0.1 * phrase)
 
 
+def unwrap_text(text: str) -> str:
+    """Unwraps PDF line breaks and repairs hyphenated words across lines."""
+    # 1. Repair hyphenated linebreaks: e.g. "net-\n works" -> "networks"
+    cleaned = re.sub(r"(\b\w+)-\s*\n\s*(\w+\b)", r"\1\2", text)
+    # 2. Strip running chapter headers and figure labels
+    cleaned = re.sub(r"(?m)^\s*\d+\s+CHAPTER\s+\d+.*$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"(?m)^\s*CHAPTER\s+\d+.*$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"(?m)^\s*Figure\s+\d+\.\d+.*$", "", cleaned, flags=re.IGNORECASE)
+    # 3. Unwrap lines that don't end with sentence-ending punctuation
+    lines = [line.strip() for line in cleaned.split("\n") if line.strip()]
+    if not lines:
+        return ""
+    paragraphs = []
+    current = lines[0]
+    for line in lines[1:]:
+        if re.search(r"[.!?:]$", current):
+            paragraphs.append(current)
+            current = line
+        else:
+            current = current + " " + line
+    paragraphs.append(current)
+    return " ".join(paragraphs)
+
+
 def grounded_sentences(query: str, text: str, limit: int = 4) -> list[str]:
-    """Extract actual sentences. Never invent a summary when no evidence exists."""
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text) if len(s.strip()) >= 20]
-    ranked = sorted(enumerate(sentences), key=lambda item: relevance(query, item[1]), reverse=True)
+    """Extract complete, grammatically grounded sentences. Never split on soft linebreaks."""
+    unwrapped = unwrap_text(text)
+    # Split on sentence boundaries (. ! ?) followed by space
+    raw_sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", unwrapped) if len(s.strip()) >= 35]
+
+    # Filter out residual headers, citations lists, or non-sentences
+    valid_sentences = []
+    for s in raw_sentences:
+        if s.count(" ") < 4:
+            continue
+        if re.match(r"^\d+(\.\d+)*\s+[A-Z\s]{4,}\s+\d+$", s):
+            continue
+        valid_sentences.append(s)
+
+    if not valid_sentences:
+        valid_sentences = raw_sentences
+
+    ranked = sorted(enumerate(valid_sentences), key=lambda item: relevance(query, item[1]), reverse=True)
     selected = sorted((i, s) for i, s in ranked[:limit] if relevance(query, s) > 0)
     return [s for _, s in selected]
 

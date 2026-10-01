@@ -62,6 +62,13 @@ async def upload_document(
                 vector_store.save()
             except Exception as save_err:
                 logger.warning(f"Could not persist vector store immediately: {save_err}")
+        
+        try:
+            from app.api.routes.research import _SYNTHESIS_CACHE, _SYNTHESIS_CACHE_LOCK
+            with _SYNTHESIS_CACHE_LOCK:
+                _SYNTHESIS_CACHE.clear()
+        except Exception:
+            pass
             
         response = DocumentResponse(
             document_id=doc_id,
@@ -133,5 +140,11 @@ async def delete_document(document_id: str, request: Request):
             vector_store.save()
         except Exception as e:
             logger.warning(f"Could not persist vector store after deletion: {e}")
+    try:
+        from app.api.routes.research import _SYNTHESIS_CACHE, _SYNTHESIS_CACHE_LOCK
+        with _SYNTHESIS_CACHE_LOCK:
+            _SYNTHESIS_CACHE.clear()
+    except Exception:
+        pass
     DOCUMENTS = [d for d in DOCUMENTS if d.document_id != document_id and d.filename != document_id]
     return {"message": f"Document {document_id} deleted successfully"}

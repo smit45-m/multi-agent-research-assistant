@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL_NAME: str = "gemini-flash-lite-latest"
     GEMINI_FAST_MODEL: str = "gemini-flash-lite-latest"
-    GEMINI_RESEARCH_MODEL: str = "gemini-2.5-flash"
+    GEMINI_RESEARCH_MODEL: str = "gemini-3-flash-preview"
 
     # TypeSafe AI Jev & autotrust/JEV-27B (System One AI Decision Model)
     # Hugging Face: https://huggingface.co/autotrust/JEV-27B
@@ -58,14 +58,20 @@ class Settings(BaseSettings):
     JEV_MODEL_ID: str = "autotrust/JEV-27B"
     JEV_ENDPOINT_URL: Optional[str] = None
     JEV_ENABLED: bool = True
-    FAST_MODE_MAX_OUTPUT_TOKENS: int = 800
-    FAST_MODE_SEARCH_TIMEOUT_SECONDS: float = 0.8
+    FAST_MODE_MAX_OUTPUT_TOKENS: int = 500
+    FAST_MODE_SEARCH_TIMEOUT_SECONDS: float = 0.5
 
     # Local Open-Source LLM & Privacy Configuration (Air-Gapped)
     LOCAL_LLM_URL: str = "http://127.0.0.1:11434"
     LOCAL_LLM_MODEL: str = "llama3.2"
     LOCAL_OPENAI_URL: str = "http://127.0.0.1:1234/v1"
     PRIVACY_BUDGET_SECONDS: float = Field(default=30, ge=3, le=120)
+
+    # Core JWT Authentication & Authorization
+    JWT_SECRET_KEY: str = "9f8b2c4e1a7d5f0e3b6a9c2d4e8f1a7b5c3e6a9d2f4b7c1e5a8d0f3b6c9e2a5f"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+    AUTH_DB_PATH: str = str(PROJECT_ROOT / "data" / "auth.db")
 
     model_config = SettingsConfigDict(
         env_file=str(PROJECT_ROOT / ".env"), env_file_encoding="utf-8", extra="ignore"

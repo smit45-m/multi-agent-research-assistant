@@ -82,6 +82,8 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
   const [copied, setCopied] = useState(false);
   const [stopped, setStopped] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [streamingReport, setStreamingReport] = useState('');
+  const [stageMessage, setStageMessage] = useState('');
 
   const controller = useRef<AbortController | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -89,6 +91,8 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
   const fileInputRef = useRef<HTMLInputElement>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lock = useRef(false);
+
+  const uploadedDocCache = useRef<Map<string, string>>(new Map());
 
   useEffect(() => { if (resetKey) textarea.current?.focus(); }, [resetKey]);
   useEffect(() => () => { controller.current?.abort(); if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
@@ -100,6 +104,14 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
       FORBID_ATTR: ['style'],
     });
   }, [result?.report]);
+
+  const streamingReportHtml = useMemo(() => {
+    if (!streamingReport) return '';
+    return DOMPurify.sanitize(marked.parse(streamingReport, { async: false }), {
+      FORBID_TAGS: ['style', 'form', 'input'],
+      FORBID_ATTR: ['style'],
+    });
+  }, [streamingReport]);
 
   function handleFileSelect(event: React.ChangeEvent<HTMLInputElement>) {
     const files = event.target.files;
@@ -134,40 +146,107 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
     const timeout = setTimeout(() => abort.abort('timeout'), 120_000);
 
     try {
-      // If user attached files directly, upload them first so the RAG index has them
+      // If user attached files directly, upload them once and cache document_id
       const uploadedAttachmentIds: string[] = [];
       if (attachedFiles.length > 0) {
         for (const file of attachedFiles) {
+          const fileKey = `${file.name}_${file.size}_${file.lastModified}`;
+          if (uploadedDocCache.current.has(fileKey)) {
+            uploadedAttachmentIds.push(uploadedDocCache.current.get(fileKey)!);
+            continue;
+          }
           const form = new FormData();
           form.append('file', file);
           try {
+            setStageMessage(`Parsing & indexing attachment: ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)...`);
             const upRes = await api<DocumentResponse>('/api/v1/documents/upload', {
               method: 'POST',
               body: form,
               signal: abort.signal,
             });
             if (upRes?.document_id) {
+              uploadedDocCache.current.set(fileKey, upRes.document_id);
               uploadedAttachmentIds.push(upRes.document_id);
             }
           } catch (uploadErr) {
             console.warn(`File upload skipped for ${file.name}:`, uploadErr);
           }
         }
+        // Once attached & cached into library, clear file chips so future questions don't re-upload
+        setAttachedFiles([]);
       }
 
-      const data = await api<ResearchResponse>('/api/v1/research/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: abort.signal,
-        body: JSON.stringify({
-          query: query.trim(),
-          mode: speedMode,
-          rag_mode: ragMode,
-          orchestrator: speedMode === 'fast' ? 'direct' : (speedMode === 'privacy' ? 'direct' : engine),
-          privacy_mode: speedMode === 'privacy',
-          attachment_ids: uploadedAttachmentIds,
-        }),
-      });
+      setStreamingReport('');
+      setStageMessage('Planner decomposing intent and hypothesis...');
+
+      let data: ResearchResponse | null = null;
+      try {
+        const streamRes = await fetch('/api/v1/research/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: abort.signal,
+          body: JSON.stringify({
+            query: query.trim(),
+            mode: speedMode,
+            rag_mode: ragMode,
+            orchestrator: speedMode === 'fast' ? 'direct' : (speedMode === 'privacy' ? 'direct' : engine),
+            privacy_mode: speedMode === 'privacy',
+            attachment_ids: uploadedAttachmentIds,
+          }),
+        });
+
+        if (streamRes.ok && streamRes.body) {
+          const reader = streamRes.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (trimmed.startsWith('data: ')) {
+                try {
+                  const ev = JSON.parse(trimmed.slice(6));
+                  if (ev.type === 'stage') {
+                    setStageMessage(ev.message || `Agent stage: ${ev.stage}`);
+                  } else if (ev.type === 'token') {
+                    setStreamingReport(ev.accumulated || (prev => prev + (ev.token || '')));
+                  } else if (ev.type === 'complete') {
+                    data = ev.response;
+                  }
+                } catch {
+                  // Ignore JSON parse error on malformed chunks
+                }
+              }
+            }
+          }
+        }
+      } catch (streamErr) {
+        if (abort.signal.aborted) throw streamErr;
+        console.warn('Streaming connection failed, falling back to sync endpoint:', streamErr);
+      }
+
+      // If streaming didn't produce complete response (or failed), fallback to sync
+      if (!data) {
+        data = await api<ResearchResponse>('/api/v1/research/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: abort.signal,
+          body: JSON.stringify({
+            query: query.trim(),
+            mode: speedMode,
+            rag_mode: ragMode,
+            orchestrator: speedMode === 'fast' ? 'direct' : (speedMode === 'privacy' ? 'direct' : engine),
+            privacy_mode: speedMode === 'privacy',
+            attachment_ids: uploadedAttachmentIds,
+          }),
+        });
+      }
 
       if (abort.signal.aborted) return;
       if (data.status !== 'completed') {
@@ -177,6 +256,11 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
         throw new Error('The server completed without a report. Try a more specific question.');
       }
 
+      const clientDuration = (Date.now() - started) / 1000;
+      data.processing_time_seconds = Number(clientDuration.toFixed(2));
+
+      setStreamingReport('');
+      setStageMessage('');
       onResult(data);
       setTab('report');
       onShowToast('Your research report is ready.');
@@ -397,11 +481,11 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
                 <div>
                   <strong>Your research is underway</strong>
                   <p>
-                    {speedMode === 'privacy'
+                    {stageMessage || (speedMode === 'privacy'
                       ? 'Air-Gapped Privacy Mode: Local RAG synthesis underway (0 cloud egress)...'
                       : speedMode === 'fast'
                       ? 'Fast mode active: Synthesizing quick response with Gemini Flash...'
-                      : 'Deep research active: Multi-agent coordination in progress...'}
+                      : 'Deep research active: Multi-agent coordination in progress...')}
                   </p>
                 </div>
                 <span className="elapsed" aria-hidden="true">{elapsed}s</span>
@@ -412,6 +496,25 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
                 <button className="text-button" onClick={() => controller.current?.abort()}>
                   <Square size={12} /> Stop waiting
                 </button>
+              </div>
+            </section>
+          )}
+
+          {/* Live streaming preview container */}
+          {loading && streamingReport && (
+            <section className="report-panel panel live-streamed" aria-label="Streaming research preview">
+              <div className="report-heading">
+                <div>
+                  <span className="eyebrow live-badge"><Sparkles size={14} className="spin-slow" /> STREAMING LIVE IN REAL-TIME</span>
+                  <h2>{query}</h2>
+                </div>
+              </div>
+              <div className="result-content" style={{ padding: '24px' }}>
+                <div className="prose" dangerouslySetInnerHTML={{ __html: streamingReportHtml }} />
+                <div className="streaming-cursor-container">
+                  <span className="streaming-cursor">▍</span>
+                  <span className="streaming-hint">Streaming tokens progressively...</span>
+                </div>
               </div>
             </section>
           )}
@@ -505,7 +608,7 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
                         return (
                           <div key={key}>
                             <span><Icon size={16} />{name}</span>
-                            <strong>{typeof timing === 'number' && timing > 0 ? `${timing.toFixed(0)} ms` : 'Active / Evaluated'}</strong>
+                            <strong>{typeof timing === 'number' && timing > 0 ? (timing < 1 ? `${timing.toFixed(1)} ms` : `${timing.toFixed(0)} ms`) : (key === 'planner' ? 'Active (Direct Plan)' : 'Active / Evaluated')}</strong>
                           </div>
                         );
                       })}

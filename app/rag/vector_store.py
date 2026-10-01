@@ -69,10 +69,25 @@ class VectorStoreManager:
             return
         try:
             from langchain_community.vectorstores import FAISS
+            faiss_dir = Path(self.persist_directory) / "faiss_index"
+            if faiss_dir.exists() and (faiss_dir / "index.faiss").exists():
+                try:
+                    self.vector_store = FAISS.load_local(
+                        str(faiss_dir), self.embeddings_model, allow_dangerous_deserialization=True
+                    )
+                    self.embedding_status = "ready"
+                    return
+                except Exception:
+                    pass
+
             self.vector_store = FAISS.from_documents(
                 list(self._documents.values()), self.embeddings_model,
                 ids=list(self._documents), normalize_L2=True)
             self.embedding_status = "ready"
+            try:
+                self.vector_store.save_local(str(faiss_dir))
+            except Exception:
+                pass
         except Exception:
             self.vector_store = None
             self.embedding_status = "unavailable"
@@ -93,7 +108,15 @@ class VectorStoreManager:
                 ids.append(identifier)
             self.version += 1
             if self.embeddings_model is not None:
-                self._rebuild_dense()
+                if self.vector_store is not None:
+                    try:
+                        new_docs = [self._documents[i] for i in ids]
+                        self.vector_store.add_documents(new_docs, ids=ids)
+                        self.embedding_status = "ready"
+                    except Exception:
+                        self._rebuild_dense()
+                else:
+                    self._rebuild_dense()
             return ids
 
     def get_all_documents(self):
@@ -147,3 +170,9 @@ class VectorStoreManager:
             payload = [{"id": identifier, "content": doc.page_content, "metadata": doc.metadata} for identifier, doc in self._documents.items()]
             temporary.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
             os.replace(temporary, target)
+            if self.vector_store is not None:
+                try:
+                    faiss_dir = directory / "faiss_index"
+                    self.vector_store.save_local(str(faiss_dir))
+                except Exception:
+                    pass

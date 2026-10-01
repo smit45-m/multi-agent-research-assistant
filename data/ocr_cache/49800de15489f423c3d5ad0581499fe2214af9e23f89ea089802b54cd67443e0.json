@@ -1,0 +1,114 @@
+[
+  {
+    "page_content": "## Slide 1\n\n# So what is Jev?\n\nIt's a new AI model.",
+    "metadata": {
+      "page": "1",
+      "source": "C:\\Users\\smitp\\Downloads\\jev-talk.pdf",
+      "format": ".pdf"
+    }
+  },
+  {
+    "page_content": "## Slide 2\n\n## So what? A lot of models come up every other week.\n\n## But Jev is different.\n\n# It's not an LLM.\n\n---\n\n*(Faint background text visible in rows:)*\n- Halcyon-3 Numina 70B Corvid Mini Tessellate-XL Mar1\n- Obsidian-40E Vesper-Turbo Verdigris 8x22 Lacuna-1.5\n- Sombre 32K Quillon Air Fathom-9 Basalt Ultra Nimbus\n\n*(Footer information)*\n2 / 16",
+    "metadata": {
+      "page": "2",
+      "source": "C:\\Users\\smitp\\Downloads\\jev-talk.pdf",
+      "format": ".pdf"
+    }
+  },
+  {
+    "page_content": "## Slide 3\n\nQUESTION\nIs this ticket urgent?\n\nLLM\none token at a time\n\ntoken 10\n\nANSWER\nYes, this ticket seems urgent because the customer ...\n\n# Jev does not generate text.\n\nIllustrative token stream — not model output.\n\n3 / 16",
+    "metadata": {
+      "page": "3",
+      "source": "C:\\Users\\smitp\\Downloads\\jev-talk.pdf",
+      "format": ".pdf"
+    }
+  },
+  {
+    "page_content": "## Slide 4\n\n## So what is Jev?\n\nJev is an AI model built to make fast, structured decisions that software can use directly.",
+    "metadata": {
+      "page": "4",
+      "source": "C:\\Users\\smitp\\Downloads\\jev-talk.pdf",
+      "format": ".pdf"
+    }
+  },
+  {
+    "page_content": "## Slide 5\n\n## STATE\n\"My package arrived damaged and I want a refund.\"\n\n## QUESTION\nWhich queue should handle this?\n\n## OPTIONS\n- billing\n- shipping\n- technical\n- general\n\n# Jev\none parallel pass\n\n~120 ms\n\n## ANSWER\n- shipping: 0.71\n- billing: 0.24\n- general: 0.04\n- technical: 0.01\n\nNo text. No parsing. Just a typed answer with a probability.\n\nIllustrative output — not a live model call.\n\n5 / 16",
+    "metadata": {
+      "page": "5",
+      "source": "C:\\Users\\smitp\\Downloads\\jev-talk.pdf",
+      "format": ".pdf"
+    }
+  },
+  {
+    "page_content": "## Slide 6\n\n# So what? Any LLM can do this with structured output.\n\nTrue. It can. Two things change.\n\n- 01 Speed\n- 02 Cost\n\nBoth measured on the same job: triaging a support inbox with Jev and with an LLM.\n\n6 / 16",
+    "metadata": {
+      "page": "6",
+      "source": "C:\\Users\\smitp\\Downloads\\jev-talk.pdf",
+      "format": ".pdf"
+    }
+  },
+  {
+    "page_content": "## Slide 8\n\nLIVE\n\n# Second difference: cost.\n\nPer million tokens — in: LLM ₹119.50 • Jev ₹4.02 out: LLM ₹956.00 • Jev free\n\nSame 1,000-token input for both • 10,000 emails a day.\n\n| | LLM | Jev |\n| :--- | :--- | :--- |\n| Per email | ₹0.326 | ₹0.004 |\n| Per day | ₹3,260 | ₹40 |\n| Per year | ₹11,89,885 | ₹14,655 |\n\n## 81.2× cheaper — ₹11,75,230 a year saved\n\nVendor headline 444.6× on their evals; here 81.2×, almost all of it the LLM's reasoning tokens.\n\nFigures are TypeSafe's own, from their launch post (Sep 2026). Independent benchmarks are still limited. LLM list prices converted at ₹95.6 / USD (23 Sep 2026).\n\n8 / 16",
+    "metadata": {
+      "page": "8",
+      "source": "C:\\Users\\smitp\\Downloads\\jev-talk.pdf",
+      "format": ".pdf"
+    }
+  },
+  {
+    "page_content": "## Slide 9\n\n# Other benefits\n9.1 Many questions, one pass  9.2 Confidence you can act on  9.3 It can't make things up\n\nShared axis · full width = 7.0 s\n\n**Jev — 5 questions** ≈ 130 ms\n\n**LLM — one call per question** ≈ 7.0 s\n\n# Adding a question adds almost no time or cost.\n\nIllustrative output — not a live model call.\n9.1 / 16",
+    "metadata": {
+      "page": "9",
+      "source": "C:\\Users\\smitp\\Downloads\\jev-talk.pdf",
+      "format": ".pdf"
+    }
+  },
+  {
+    "page_content": "## Slide 10\n\n## Other benefits\n\n9.1 Many questions, one pass  9.2 Confidence you can act on  9.3 It can't make things up\n\n## Trained so that 90% confident means right about 90% of the time.\n\n- `x: stated confidence · y: actual accuracy`\n- `- target` against the dashed ideal diagonal\n\nCalibration is Jev's training objective (RLCD). TypeSafe has not yet published a calibration curve.\n\nIllustrative output — not a live model call.\n\n9.2 / 16",
+    "metadata": {
+      "page": "10",
+      "source": "C:\\Users\\smitp\\Downloads\\jev-talk.pdf",
+      "format": ".pdf"
+    }
+  },
+  {
+    "page_content": "## Slide 12\n\nBehind Jev\nWho\nWhy\nImpact\nWhere\n\n# Who built Jev?\n\nDA\n\n# Diogo Almeida\nex-OpenAI • InstructGPT • ChatGPT\n\n## Now building AI for software, not people.\n\nTypeSafe AI\n\n10.1 / 16",
+    "metadata": {
+      "page": "12",
+      "source": "C:\\Users\\smitp\\Downloads\\jev-talk.pdf",
+      "format": ".pdf"
+    }
+  },
+  {
+    "page_content": "## Slide 13\n\nBehind Jev\n\nWho\nWhy (highlighted in lime green)\nImpact\nWhere\n\nSoftware needs System 1 thinking, but we keep building System 2 thinking.\n\n10.2 / 16",
+    "metadata": {
+      "page": "13",
+      "source": "C:\\Users\\smitp\\Downloads\\jev-talk.pdf",
+      "format": ".pdf"
+    }
+  },
+  {
+    "page_content": "## Slide 14\n\nBehind Jev\n\nWho\nWhy\nImpact\nWhere\n\nAI moves from a feature to a primitive.\n\n```python\nif jev(\"Is this customer angry?\") > 0.9:\n```\n\nIllustrative\n\nAI stops being the product. It becomes plumbing.\n\n10.3 / 16",
+    "metadata": {
+      "page": "14",
+      "source": "C:\\Users\\smitp\\Downloads\\jev-talk.pdf",
+      "format": ".pdf"
+    }
+  },
+  {
+    "page_content": "## Slide 15\n\n# Behind Jev\n\nWho | Why | Impact | Where 1 / 5\n--- | --- | --- | ---\n\n# 01\n\n# AI agents\n\nWhich tool? · Which model? · Is this step safe?\n\n## Every small decision, fast and cheap enough to check.\n\n10.4 / 16",
+    "metadata": {
+      "page": "15",
+      "source": "C:\\Users\\smitp\\Downloads\\jev-talk.pdf",
+      "format": ".pdf"
+    }
+  },
+  {
+    "page_content": "## Slide 17\n\n# Behind Jev\nWho | Why | Impact | Where 3 / 5\n\n## 03\n# Trust & safety\n\nModeration • Fraud • Spam • Jailbreak detection\n\n## Score, threshold, escalate, on every single request.\n\n10.6 / 16",
+    "metadata": {
+      "page": "17",
+      "source": "C:\\Users\\smitp\\Downloads\\jev-talk.pdf",
+      "format": ".pdf"
+    }
+  }
+]

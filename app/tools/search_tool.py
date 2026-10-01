@@ -63,12 +63,26 @@ class WebSearchTool:
                     data = json.loads(r.read().decode("utf-8"))
                     search_items = data.get("query", {}).get("search", [])
                     for item in search_items[:max_results]:
+                        title = item.get("title", "Wikipedia")
                         clean_snip = re.sub(r"<[^>]+>", "", item.get("snippet", ""))
-                        if clean_snip:
+                        snippet_text = clean_snip
+                        # Fetch full summary extract for high-quality encyclopedic context
+                        if title and len(results) < 2:
+                            try:
+                                summary_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(title.replace(' ', '_'))}"
+                                s_req = urllib.request.Request(summary_url, headers={"User-Agent": "MultiAgentResearchAssistant/1.0"})
+                                with urllib.request.urlopen(s_req, timeout=1.2) as s_resp:
+                                    s_data = json.loads(s_resp.read().decode("utf-8"))
+                                    extract = s_data.get("extract", "")
+                                    if extract and len(extract) > len(snippet_text):
+                                        snippet_text = extract
+                            except Exception:
+                                pass
+                        if snippet_text:
                             results.append({
-                                "title": item.get("title", "Wikipedia"),
-                                "url": f"https://en.wikipedia.org/wiki/{urllib.parse.quote(item.get('title', '').replace(' ', '_'))}",
-                                "snippet": clean_snip,
+                                "title": title,
+                                "url": f"https://en.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}",
+                                "snippet": snippet_text,
                                 "source_type": "wikipedia"
                             })
             except Exception:

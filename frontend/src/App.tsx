@@ -13,13 +13,15 @@ import {
   Search,
   Sun,
   X,
+  LogOut,
 } from "lucide-react";
 import { StudioTab } from "./components/StudioTab";
 import { BenchmarksTab } from "./components/BenchmarksTab";
 import { KnowledgeTab } from "./components/KnowledgeTab";
 import { ConcurrencyTab } from "./components/ConcurrencyTab";
-import { api, type HealthInfo } from "./api";
-import type { ResearchResponse } from "./types";
+import { AuthModal } from "./components/AuthModal";
+import { api, fetchMeApi, logoutApi, getAuthToken, type HealthInfo } from "./api";
+import type { ResearchResponse, User } from "./types";
 
 const pages = [
   { id: "studio", label: "Research studio", icon: Search },
@@ -49,12 +51,33 @@ export default function App() {
   const [result, setResult] = useState<ResearchResponse | null>(null);
   const [resetKey, setResetKey] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
 
   const notify = useCallback((message: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast(message);
     toastTimer.current = setTimeout(() => setToast(""), 5000);
   }, []);
+
+  useEffect(() => {
+    const token = getAuthToken();
+    if (token) {
+      fetchMeApi()
+        .then((user) => setCurrentUser(user))
+        .catch(() => setCurrentUser(null));
+    }
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await logoutApi();
+    } catch {
+      // Ignored
+    }
+    setCurrentUser(null);
+    notify("Signed out successfully.");
+  }, [notify]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -258,10 +281,24 @@ export default function App() {
           >
             <Code2 size={16} /> View project <ArrowUpRight size={13} />
           </a>
-          <div className="workspace-profile">
-            <span className="profile-avatar">R</span>
+          <div
+            className="workspace-profile"
+            onClick={() => {
+              if (!currentUser) setAuthModalOpen(true);
+            }}
+            style={{ cursor: currentUser ? "default" : "pointer" }}
+            title={currentUser ? `Signed in as ${currentUser.email}` : "Click to sign in"}
+          >
+            <span className="profile-avatar">
+              {currentUser?.full_name ? currentUser.full_name.charAt(0).toUpperCase() : "R"}
+            </span>
             <div>
-              Personal workspace<small>History stays in this session</small>
+              {currentUser?.full_name || "Personal workspace"}
+              <small>
+                {currentUser
+                  ? `${currentUser.role.toUpperCase()} • ${currentUser.email}`
+                  : "Sign in to save research"}
+              </small>
             </div>
           </div>
         </div>
@@ -309,6 +346,36 @@ export default function App() {
             >
               {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
             </button>
+            <span className="topbar-divider" />
+            {currentUser ? (
+              <div
+                className="auth-user-pill"
+                title={`${currentUser.email} (${currentUser.role})`}
+              >
+                <span className="auth-user-avatar">
+                  {currentUser.full_name ? currentUser.full_name.charAt(0).toUpperCase() : "U"}
+                </span>
+                <span className="auth-user-name">{currentUser.full_name}</span>
+                <span className={`auth-role-tag ${currentUser.role}`}>
+                  {currentUser.role}
+                </span>
+                <button
+                  className="auth-signout-btn"
+                  title="Sign out"
+                  onClick={handleLogout}
+                  aria-label="Sign out"
+                >
+                  <LogOut size={13} />
+                </button>
+              </div>
+            ) : (
+              <button
+                className="auth-topbar-btn"
+                onClick={() => setAuthModalOpen(true)}
+              >
+                Sign In
+              </button>
+            )}
           </div>
         </header>
         <main id="main-content" className="main-content" tabIndex={-1}>
@@ -355,6 +422,14 @@ export default function App() {
           </div>
         )}
       </div>
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onSuccess={(user, message) => {
+          setCurrentUser(user);
+          notify(message);
+        }}
+      />
     </div>
   );
 }
