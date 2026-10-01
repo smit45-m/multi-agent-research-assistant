@@ -36,9 +36,9 @@ variable "cloudflare_tunnel_token" {
 }
 
 variable "ebs_volume_size" {
-  description = "Root EBS storage size in GB (gp3, 12GB is ~$0.96/mo)"
+  description = "Root EBS storage size in GB (gp3, 24GB is ~$1.92/mo, gives 17GB free space for PyTorch/Transformers container layers)"
   type        = number
-  default     = 12
+  default     = 24
 }
 
 variable "app_port" {
