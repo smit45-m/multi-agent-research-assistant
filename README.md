@@ -60,44 +60,50 @@
 
 ```mermaid
 flowchart TD
-    User([User / Browser / REST Client]) -->|HTTPS / WSS| Caddy[Caddy 2 Reverse Proxy :443 / :80]
-    Caddy -->|Auto SSL Let's Encrypt| Caddy
+    User([User / Browser / REST Client]) -->|HTTPS| Caddy[Caddy 2 Reverse Proxy :443 / :80]
     Caddy -->|Unbuffered Proxy :8000| FastAPI[FastAPI Gateway + Pydantic v2]
 
-    subgraph SystemOne [System-1: TypeSafe AI Jev Decision Engine]
-        FastAPI --> JEV[JEVDecisionEngine: autotrust/JEV-27B]
-        JEV -->|Calibrated Softmax Probabilities| Meta[MetaAgent: Adaptive Pipeline Config]
+    subgraph SystemOne ["System-1: TypeSafe AI Jev Decision Engine"]
+        FastAPI --> JEV["JEVDecisionEngine (autotrust/JEV-27B)"]
+        JEV -->|Calibrated Softmax Probabilities| Meta["MetaAgent: Adaptive Pipeline Config"]
     end
 
-    subgraph RoutingLayer [Execution Engine Routing]
+    subgraph RoutingLayer ["Execution Engine Routing"]
         Meta --> EngineChoice{Selected Engine}
-        EngineChoice -->|Fast Direct| DirectEngine[Direct Fast RAG Synthesizer]
-        EngineChoice -->|LangGraph| LGWorkflow[LangGraph StateGraph Engine]
-        EngineChoice -->|CrewAI| CrewWorkflow[CrewAI Compatibility Facade]
+        EngineChoice -->|Fast Direct| DirectEngine["Direct Fast RAG Synthesizer"]
+        EngineChoice -->|LangGraph| LGWorkflow["LangGraph StateGraph Engine"]
+        EngineChoice -->|CrewAI| CrewWorkflow["CrewAI Compatibility Facade"]
     end
 
-    subgraph LangGraphFlow [7 Collaborative Agents LangGraph Workflow]
-        LGWorkflow --> Agent1[1. PlannerAgent: Sub-query Decomposition]
-        Agent1 --> Agent2[2. RetrieverAgent: Hybrid RAG Execution]
-        Agent2 --> Agent3[3. AnalyzerAgent: Map-Reduce & Gap Detection]
-        Agent3 --> QualityCheck{Evidence Gaps or Need More?}
-        QualityCheck -- Yes & Iteration < Max --> Agent2
-        QualityCheck -- No: Grounded Context Ready --> Agent4[4. WriterAgent: Report Synthesis]
-        Agent4 --> Agent5[5. FactCheckerAgent: Cross-Source Verification]
-        Agent5 --> Agent6[6. SupervisorAgent: Tables, Pointwise Bullets & Emojis]
-        Agent6 --> Agent7[7. Review Node: Final Nuance & Claim Reflection]
+    subgraph LangGraphFlow ["7 Collaborative Agents - LangGraph Workflow"]
+        LGWorkflow --> Agent1["1. PlannerAgent"]
+        Agent1 --> Agent2["2. RetrieverAgent"]
+        Agent2 --> Agent3["3. AnalyzerAgent"]
+        Agent3 --> QualityCheck{"Evidence Gaps?"}
+        QualityCheck -- Re-retrieve --> Agent2
+        QualityCheck -- Proceed --> Agent4["4. WriterAgent"]
+        Agent4 --> Agent5["5. FactCheckerAgent"]
+        Agent5 --> Agent6["6. SupervisorAgent"]
+        Agent6 --> Agent7["7. Review Node"]
     end
 
-    subgraph RAGCore [Universal Hybrid RAG Engine - Active Across All Modes]
-        Agent2 <--> FAISS[(FAISS Dense IndexFlatIP)]
-        Agent2 <--> Embeddings[sentence-transformers all-MiniLM-L6-v2]
-        Agent2 <--> BM25[BM25 Lexical Keyword Search]
-        Agent2 <--> RRF[Reciprocal Rank Fusion k=60]
-        Agent2 <--> MultiSources[15+ Multi-Format Connectors: PDF, DOCX, CSV, Web, ArXiv, Audio]
-        DirectEngine <--> RAGCore
+    subgraph RAGCore ["Universal Hybrid RAG Engine"]
+        FAISS[("FAISS Dense IndexFlatIP")]
+        Embeddings["all-MiniLM-L6-v2 Embeddings"]
+        BM25["BM25 Lexical Search"]
+        RRF["Reciprocal Rank Fusion k=60"]
+        MultiSources["15+ Format Connectors"]
     end
 
-    Agent7 --> StreamGateway[Server-Sent Events / SSE Stream Gateway]
+    Agent2 <--> FAISS
+    Agent2 <--> BM25
+    Agent2 <--> RRF
+    Agent2 <--> Embeddings
+    Agent2 <--> MultiSources
+    DirectEngine <--> FAISS
+    DirectEngine <--> BM25
+
+    Agent7 --> StreamGateway["SSE Stream Gateway"]
     DirectEngine --> StreamGateway
     StreamGateway --> User
 ```
