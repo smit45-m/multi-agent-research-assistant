@@ -1,0 +1,16 @@
+# AWS Infrastructure Configuration (Ultra-Budget Prototype <$10/month)
+aws_region      = "ap-south-1" # Mumbai (or us-east-1, eu-west-1, etc.)
+environment     = "prototype"
+instance_type   = "t3.small"   # 2 vCPU, 2GB RAM (~$4.20/mo Spot)
+use_spot        = true         # Spot instance for ~70% cost reduction
+ebs_volume_size = 15           # 15 GB gp3 (~$1.20/mo)
+
+# Container & Network
+ecr_repository_name = "multi-agent-research-assistant"
+host_port           = 80
+app_port            = 8000
+
+# Application Secrets (Will be injected into /opt/app/.env on EC2)
+gemini_api_key  = "YOUR_GEMINI_API_KEY_HERE"
+groq_api_key    = "YOUR_GROQ_API_KEY_HERE"
+jwt_secret_key  = "YOUR_JWT_SECRET_KEY_HERE"

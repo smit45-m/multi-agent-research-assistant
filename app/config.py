@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     OPENAI_MODEL_NAME: str = "llama-3.3-70b-versatile"
     FAST_MODEL_NAME: Optional[str] = None
     RESEARCH_MODEL_NAME: Optional[str] = None
-    LLM_TIMEOUT_SECONDS: float = Field(default=35, ge=1, le=120)
+    LLM_TIMEOUT_SECONDS: float = Field(default=75, ge=1, le=240)
     FAST_BUDGET_SECONDS: float = Field(default=25, ge=3, le=120)
     BALANCED_BUDGET_SECONDS: float = Field(default=75, ge=5, le=240)
     RESEARCH_BUDGET_SECONDS: float = Field(default=180, ge=10, le=600)

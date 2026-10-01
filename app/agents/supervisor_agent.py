@@ -88,8 +88,11 @@ class SupervisorAgent:
             has_table=has_table,
             has_emojis=has_emojis
         )
-        state["jev_supervisor_arbitration"] = jev_arbitration
-        
+        # In research mode, if draft is already an in-depth report with equations/sections, prioritize immediate approval
+        has_equations = "$$" in draft or "\\frac" in draft or "\\mathbf" in draft
+        if mode == "research" and (len(draft) >= 2000 or (has_table and has_equations)):
+            jev_arbitration["winner_action"] = "accept_and_verify"
+
         should_invoke_llm = (
             jev_arbitration["winner_action"] == "elevate_llm_pass" and
             not state.get("offline") and
@@ -105,12 +108,13 @@ class SupervisorAgent:
                 ]
                 
                 supervisor_prompt = json.dumps({
-                    "task": "Review, balance, and elevate this research report. Ensure it has a comparative table, pointwise bullet explanations with emojis, and deep explainability.",
+                    "task": "Review, balance, and elevate this research report. Preserve all equations, derivations, and granular technical breakdowns. Ensure it has a comparative table, pointwise bullet explanations with emojis, and deep explainability.",
                     "query": query,
                     "target_mode": mode,
-                    "draft_report": draft[:4000],
+                    "draft_report": draft[:16000],
                     "available_evidence": evidence_summary,
                     "requirements": [
+                        "Preserve all mathematical equations ($$...$$ and $...$) and tensor dimensions",
                         "Include a markdown comparison table (| Dimension | Option A | Option B | ...)",
                         "Use clear pointwise bullet points with bold concepts and relevant emojis",
                         "Add an Explainability & Architectural Trade-offs section",
@@ -118,13 +122,13 @@ class SupervisorAgent:
                     ]
                 }, ensure_ascii=False)
                 
-                max_tokens = 2200 if is_fast else 3500
+                max_tokens = 2200 if is_fast else (6000 if mode == "research" else 3500)
                 supervised_report = call_model(
                     self.llm, state, SUPERVISOR_SYSTEM_PROMPT, supervisor_prompt, max_tokens=max_tokens
                 )
                 
                 # Verify that supervised report didn't drop critical content
-                if len(supervised_report.strip()) >= len(draft.strip()) * 0.6:
+                if len(supervised_report.strip()) >= len(draft.strip()) * 0.7:
                     elevated = supervised_report
                     state["reviewed"] = True
             except Exception as e:

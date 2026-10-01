@@ -47,6 +47,21 @@ class ResearchGraph:
         def tracked(name, action):
             def run(state):
                 state["routing_metadata"]["stages"].append(name)
+                on_stage = state.get("on_stage")
+                if on_stage:
+                    stage_messages = {
+                        "plan": "Planner Agent decomposing query and research plan...",
+                        "retrieve": "Retriever Agent querying Hybrid RAG and documents...",
+                        "analyze": "Analyzer Agent connecting evidence themes and gaps...",
+                        "write": "Writer Agent synthesizing grounded research report...",
+                        "fact_checker": "Fact-Checker Agent verifying cross-source alignment...",
+                        "supervise": "Supervisor Agent evaluating balance & trade-offs...",
+                        "review": "Review pass validating claims and nuances..."
+                    }
+                    try:
+                        on_stage(name, stage_messages.get(name, f"Executing {name} stage..."))
+                    except Exception:
+                        pass
                 return action(state)
             return run
         workflow.add_node("plan", tracked("plan", planner.plan))

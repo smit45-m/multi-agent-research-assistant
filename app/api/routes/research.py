@@ -408,9 +408,13 @@ def execute_research_stream(
         accumulated = ""
         while True:
             try:
-                item = event_queue.get(timeout=60.0)
+                item = event_queue.get(timeout=5.0)
             except queue.Empty:
-                break
+                if not worker_thread.is_alive():
+                    break
+                # SSE comment keep-alive to prevent browser/proxy connection drop
+                yield ": keep-alive\n\n"
+                continue
             if item is None:
                 break
             if item.get("type") == "token":

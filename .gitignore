@@ -18,3 +18,19 @@ scratch/
 scratch_benchmark_results.json
 .DS_Store
 Thumbs.db
+data/
+data/**
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc

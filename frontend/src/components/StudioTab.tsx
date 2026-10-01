@@ -143,7 +143,8 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
     controller.current = abort;
     const started = Date.now();
     const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
-    const timeout = setTimeout(() => abort.abort('timeout'), 120_000);
+    const timeoutMs = speedMode === 'fast' ? 45_000 : 240_000;
+    const timeout = setTimeout(() => abort.abort('timeout'), timeoutMs);
 
     try {
       // If user attached files directly, upload them once and cache document_id
@@ -277,7 +278,7 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
         setStopped(true);
       } else {
         setError(abort.signal.reason === 'timeout'
-          ? 'The request timed out after 2 minutes. Try again with a more focused question.'
+          ? `The request timed out after ${speedMode === 'fast' ? '45 seconds' : '4 minutes'}. Try again with a more focused question.`
           : errorMessage(err));
       }
     } finally {

@@ -1,0 +1,96 @@
+name: Automated AWS Deployment CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allows manual trigger from GitHub UI if needed
+
+jobs:
+  build-and-deploy:
+    name: Build Frontend, Push Image & Auto-Deploy to AWS
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Repository Code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: 📦 Install Frontend Dependencies & Build UI
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+          cd ..
+          ls -la app/static/
+
+      - name: 🔐 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || 'ap-south-1' }}
+
+      - name: 🔑 Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🚀 Build, Tag, and Push Docker Image to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY || 'multi-agent-research-assistant' }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            --tag $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "Pushed image: $ECR_REGISTRY/$ECR_REPOSITORY:latest"
+
+      - name: 🔄 Auto-Deploy to EC2 via AWS Systems Manager (SSM)
+        if: env.EC2_INSTANCE_ID != ''
+        env:
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          AWS_REGION: ${{ secrets.AWS_REGION || 'ap-south-1' }}
+        run: |
+          echo "Triggering zero-downtime rolling reload on instance $EC2_INSTANCE_ID..."
+          COMMAND_ID=$(aws ssm send-command \
+            --region $AWS_REGION \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters 'commands=["/usr/local/bin/deploy-app"]' \
+            --query "Command.CommandId" \
+            --output text)
+          
+          echo "Command dispatched: $COMMAND_ID. Waiting for deployment completion..."
+          aws ssm wait command-executed \
+            --region $AWS_REGION \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$EC2_INSTANCE_ID" || true
+          
+          echo "✅ EC2 deployment signal successfully acknowledged."
+
+      - name: 🔄 Auto-Deploy to ECS (Optional if using ECS Fargate)
+        if: env.ECS_CLUSTER != '' && env.ECS_SERVICE != ''
+        env:
+          ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
+          ECS_SERVICE: ${{ secrets.ECS_SERVICE }}
+          AWS_REGION: ${{ secrets.AWS_REGION || 'ap-south-1' }}
+        run: |
+          echo "Triggering ECS rolling update on cluster $ECS_CLUSTER..."
+          aws ecs update-service \
+            --region $AWS_REGION \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --force-new-deployment
+          echo "✅ ECS service update requested."

@@ -82,8 +82,13 @@ class BoundedLLM:
                     with OpenAI(api_key=self.settings.OPENAI_API_KEY, base_url=self.settings.OPENAI_BASE_URL,
                                 timeout=timeout_sec, max_retries=0) as oai_client:
                         kwargs = {"response_format": {"type": "json_object"}} if json_mode else {}
-                        # Fast mode allows up to 1200 tokens to ensure full pedagogical sections (steps, example, table, takeaways)
-                        actual_tokens = min(max_tokens, 1200) if self.mode in ("fast", "quick") else min(max_tokens, 2500)
+                        # Dynamic token bounds: 1200 for fast, up to 8192 for deep research
+                        if self.mode in ("fast", "quick"):
+                            actual_tokens = min(max_tokens, 1200)
+                        elif self.mode in ("research", "deep"):
+                            actual_tokens = min(max_tokens, 8192)
+                        else:
+                            actual_tokens = min(max_tokens, 2500)
                         result = oai_client.chat.completions.create(
                             model=groq_model, temperature=0.1, max_tokens=actual_tokens,
                             messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}], **kwargs)
@@ -99,10 +104,10 @@ class BoundedLLM:
                         output_tokens = min(max_tokens, 1200)
                         candidates = ["gemini-flash-lite-latest", "gemini-3.5-flash"]
                     elif self.mode in ("research", "deep"):
-                        output_tokens = max(max_tokens, 2500)
-                        candidates = [self.model, "gemini-3.5-flash", "gemini-flash-lite-latest"]
+                        output_tokens = min(max_tokens, 8192)
+                        candidates = ["gemini-flash-lite-latest", self.model, "gemini-3.5-flash"]
                     else:
-                        output_tokens = min(max_tokens, 2200)
+                        output_tokens = min(max_tokens, 2500)
                         candidates = [self.model, "gemini-flash-lite-latest", "gemini-3.5-flash"]
                     
                     candidate_models = list(dict.fromkeys([m for m in candidates if m]))
@@ -139,7 +144,8 @@ class BoundedLLM:
                                         self.model = model_name
                                         return res_text.strip()
                             elif resp.status_code in (429, 503):
-                                break
+                                logger.warning(f"Model {model_name} returned {resp.status_code}; continuing to next candidate")
+                                continue
                         except Exception:
                             continue
                     return ""
@@ -148,17 +154,18 @@ class BoundedLLM:
                 # Prioritize Groq for ultra-low latency (<1.5s) in Fast Mode or JSON extractions
                 if groq_available and (self.mode in ("fast", "quick") or json_mode):
                     try:
-                        text = _call_groq(timeout_sec=min(remaining, 4.0))
+                        fast_groq_timeout = min(remaining, 4.0 if self.mode in ("fast", "quick") else 20.0)
+                        text = _call_groq(timeout_sec=fast_groq_timeout)
                     except Exception as e:
                         if "429" in str(e) or "rate_limit" in str(e):
                             groq_rate_limited = True
                         logger.warning(f"Fast Groq pass skipped ({e}); attempting instant Gemini fallback")
                         text = ""
 
-                # Fast Gemini pass if Groq produced no text or was skipped
+                # Primary Gemini pass for Research & Balanced synthesis
                 if not text and gemini_available:
                     try:
-                        gemini_budget = min(remaining, 3.5 if self.mode in ("fast", "quick") else 7.0)
+                        gemini_budget = min(remaining, 3.5 if self.mode in ("fast", "quick") else (65.0 if self.mode in ("research", "deep") else 20.0))
                         text = _call_gemini(timeout_sec=gemini_budget)
                     except Exception as e:
                         logger.warning(f"Gemini call failed: {e}")
@@ -167,7 +174,8 @@ class BoundedLLM:
                 # Groq fallback if Gemini failed and Groq wasn't already rate-limited
                 if not text and groq_available and not groq_rate_limited:
                     try:
-                        text = _call_groq(timeout_sec=min(remaining, 5.0))
+                        groq_budget = min(remaining, 45.0 if self.mode in ("research", "deep") else 15.0)
+                        text = _call_groq(timeout_sec=groq_budget)
                     except Exception as e:
                         logger.warning(f"Groq fallback failed: {e}")
                         text = ""
@@ -207,9 +215,10 @@ class BoundedLLM:
         if groq_available and (self.mode in ("fast", "quick") or not gemini_available):
             try:
                 from openai import OpenAI
+                stream_timeout = min(self.deadline - time.monotonic() if self.deadline else 8.0, 60.0 if self.mode in ("research", "deep") else 8.0)
                 with OpenAI(api_key=self.settings.OPENAI_API_KEY, base_url=self.settings.OPENAI_BASE_URL,
-                            timeout=min(self.deadline - time.monotonic() if self.deadline else 6.0, 6.0), max_retries=0) as oai_client:
-                    actual_tokens = min(max_tokens, 1200) if self.mode in ("fast", "quick") else min(max_tokens, 2500)
+                            timeout=stream_timeout, max_retries=0) as oai_client:
+                    actual_tokens = min(max_tokens, 1200) if self.mode in ("fast", "quick") else (min(max_tokens, 8192) if self.mode in ("research", "deep") else min(max_tokens, 2500))
                     response = oai_client.chat.completions.create(
                         model=groq_model, temperature=0.1, max_tokens=actual_tokens,
                         messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
@@ -232,11 +241,11 @@ class BoundedLLM:
             if self.mode in ("fast", "quick"):
                 fast_pool = ["gemini-flash-lite-latest", "gemini-3.5-flash"]
             elif self.mode in ("research", "deep"):
-                fast_pool = ["gemini-3.5-flash", "gemini-flash-lite-latest"]
+                fast_pool = ["gemini-flash-lite-latest", self.model, "gemini-3.5-flash"]
             else:
-                fast_pool = ["gemini-flash-lite-latest", "gemini-3.5-flash"]
+                fast_pool = ["gemini-flash-lite-latest", self.model, "gemini-3.5-flash"]
 
-            candidates = [self.model] + fast_pool
+            candidates = fast_pool + [self.model]
             candidate_models = list(dict.fromkeys([m for m in candidates if m]))
 
             headers = {
@@ -248,15 +257,16 @@ class BoundedLLM:
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {
                     "temperature": 0.2,
-                    "maxOutputTokens": min(max_tokens, 1200) if self.mode in ("fast", "quick") else max(max_tokens, 2500)
+                    "maxOutputTokens": min(max_tokens, 1200) if self.mode in ("fast", "quick") else (min(max_tokens, 8192) if self.mode in ("research", "deep") else max(max_tokens, 2500))
                 }
             }
             streamed_any = False
             client = get_shared_client()
+            gemini_stream_timeout = 65.0 if self.mode in ("research", "deep") else (20.0 if self.mode == "balanced" else 8.0)
             for model_name in candidate_models:
                 try:
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?alt=sse"
-                    with client.stream("POST", url, headers=headers, json=body, timeout=8.0) as response:
+                    with client.stream("POST", url, headers=headers, json=body, timeout=gemini_stream_timeout) as response:
                         if response.status_code == 200:
                             for line in response.iter_lines():
                                 if line.startswith("data: "):
