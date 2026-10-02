@@ -34,6 +34,41 @@ class RetrieverAgent:
             candidates.append({"title": attachment["filename"], "content": attachment["text"],
                                "source": "attachment:" + attachment["id"], "source_type": attachment["kind"],
                                "relevance_score": 1.0, "user_supplied": True})
+        # Multi-Hop Web Navigation & Live URL Traversal
+        from app.rag.web_navigator import MultiHopWebNavigator
+        extracted_urls = MultiHopWebNavigator.extract_urls(query)
+        if options.get("urls"):
+            extracted_urls.extend([u for u in options["urls"] if u not in extracted_urls])
+
+        if extracted_urls and not state.get("offline") and state.get("mode") != "privacy":
+            on_stage = state.get("on_stage")
+            if on_stage:
+                on_stage("retrieve", f"Navigating live web URLs ({len(extracted_urls)}) and cross-site links...")
+            try:
+                crawled_chunks = MultiHopWebNavigator().traverse_and_ingest(
+                    extracted_urls, query, max_hops=1, max_children=4
+                )
+                if crawled_chunks:
+                    # Dynamically index into vector store for dense FAISS and BM25 search
+                    self.vector_store.add_documents(crawled_chunks)
+                    # Directly inject into candidate pool as high-priority grounded evidence
+                    for doc in crawled_chunks:
+                        m = doc.metadata
+                        candidates.append({
+                            "title": str(m.get("title", "Live Web Resource")),
+                            "filename": str(m.get("url", m.get("source", "web"))),
+                            "content": doc.page_content,
+                            "source": str(m.get("url", m.get("source", "web"))),
+                            "source_type": str(m.get("source_type", "web_traversal")),
+                            "relevance_score": 1.0,
+                            "dense_score": 0.95,
+                            "user_supplied": True,
+                            "hop_level": m.get("hop_level", 0)
+                        })
+                    actual.append("multi_hop_web_navigation")
+            except Exception as nav_err:
+                state["warnings"].append(f"Web navigation error: {nav_err}")
+
         for question in questions:
             if time.monotonic() > state.get("deadline", float("inf")) - 2:
                 state["warnings"].append("Retrieval stopped at the request time budget.")
@@ -122,13 +157,16 @@ class RetrieverAgent:
                     unique[key] = document
         ordered = sorted(unique.values(), key=lambda d: d["relevance_score"], reverse=True)
         chosen, counts = [], {}
+        has_web_nav = any(d.get("source_type") in ("web_traversal", "leetcode_problem") for d in ordered)
+        effective_cap = max(top_k, 14 if has_web_nav else top_k)
         for document in ordered:
             source = document["source"]
-            if counts.get(source, 0) >= 3:
+            max_per_src = 6 if document.get("source_type") in ("web_traversal", "leetcode_problem") else 3
+            if counts.get(source, 0) >= max_per_src:
                 continue
             chosen.append(document)
             counts[source] = counts.get(source, 0) + 1
-            if len(chosen) >= top_k:
+            if len(chosen) >= effective_cap:
                 break
         state["retrieved_documents"] = chosen
         state["iteration_count"] = state.get("iteration_count", 0) + 1
