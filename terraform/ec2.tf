@@ -63,44 +63,67 @@ locals {
               MAX_CONCURRENT_REQUESTS=50
               GEMINI_API_KEY=${var.gemini_api_key}
               GROQ_API_KEY=${var.groq_api_key}
+              OPENAI_API_KEY=${var.groq_api_key}
               JWT_SECRET_KEY=${var.jwt_secret_key}
               DATA_DIR=/app/data
+              VECTOR_STORE_PATH=/app/data/vector_store
+              AUTH_DB_PATH=/app/data/auth.db
               ENVFILE
               chmod 600 /opt/app/.env
 
               # 6. Create deployment helper script (used on startup and by CI/CD)
               cat << 'DEPLOY_SCRIPT' > /usr/local/bin/deploy-app
               #!/bin/bash
-              set -e
+              set -euo pipefail
               REGION="${var.aws_region}"
               REPO_URL="${aws_ecr_repository.app.repository_url}"
 
               echo "Authenticating with Amazon ECR..."
-              aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $REPO_URL || true
+              aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$REPO_URL"
 
-              echo "Checking if latest image is in ECR..."
-              if docker pull $REPO_URL:latest; then
-                IMAGE_TO_RUN="$REPO_URL:latest"
-              else
-                echo "ECR image not available yet. Running local fallback or waiting for first CI/CD push."
-                exit 0
+              mkdir -p /opt/app/data/vector_store
+              chown -R 999:999 /opt/app/data || chmod -R 777 /opt/app/data
+
+              # Free disk space if root partition has less than 8GB free before pulling
+              AVAIL_KB=$(df --output=avail / | tail -1 | tr -d ' ')
+              if [ "$AVAIL_KB" -lt 8388608 ]; then
+                echo "Low disk space detected (<8GB free); stopping old container and pruning unused layers..."
+                docker stop research-assistant 2>/dev/null || true
+                docker rm -f research-assistant 2>/dev/null || true
+                docker system prune -af || true
               fi
 
-              echo "Stopping old container..."
-              docker stop research-assistant || true
-              docker rm -f research-assistant || true
+              echo "Pulling latest image from ECR..."
+              docker pull "$REPO_URL:latest"
 
-              echo "Launching new container with persistent vector data..."
+              echo "Stopping old container..."
+              docker stop research-assistant 2>/dev/null || true
+              docker rm -f research-assistant 2>/dev/null || true
+
+              echo "Launching new container bound to 127.0.0.1:8000 behind Caddy..."
               docker run -d \
                 --name research-assistant \
                 --restart always \
-                -p 80:8000 \
+                -p 127.0.0.1:8000:8000 \
                 -v /opt/app/data:/app/data \
                 --env-file /opt/app/.env \
-                $IMAGE_TO_RUN
+                "$REPO_URL:latest"
 
-              echo "Deployment complete. Container status:"
-              docker ps --filter name=research-assistant
+              # Prune dangling old images to keep disk usage low
+              docker image prune -f || true
+
+              echo "Waiting for application healthcheck..."
+              for i in $(seq 1 20); do
+                if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+                  echo "Container is healthy!"
+                  docker ps --filter name=research-assistant
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "WARNING: Healthcheck did not pass within 40s; container logs:"
+              docker logs --tail 50 research-assistant || true
+              exit 1
               DEPLOY_SCRIPT
               chmod +x /usr/local/bin/deploy-app
 
@@ -168,6 +191,10 @@ resource "aws_instance" "app_server" {
 
   user_data                   = local.user_data
   user_data_replace_on_change = false
+
+  lifecycle {
+    ignore_changes = [ami, user_data]
+  }
 
   tags = {
     Name = "research-assistant-server"

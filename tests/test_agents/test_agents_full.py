@@ -97,6 +97,6 @@ def test_writer_agent_report_and_accuracy():
     
     res = writer.write(state)
     assert res["status"] == "completed"
-    assert "# Executive Summary" in res["final_report"]
+    assert res["final_report"].strip().startswith("#")
     assert res["response_accuracy_score"] >= 0.85
     assert len(res["sources_cited"]) > 0

@@ -11,7 +11,7 @@ resource "aws_ecr_repository" "app" {
   }
 }
 
-# Lifecycle policy to retain only the 3 latest images to keep storage cost under $0.20/mo
+# Lifecycle policy to retain the 3 most recent images (never expires :latest by age)
 resource "aws_ecr_lifecycle_policy" "cleanup" {
   repository = aws_ecr_repository.app.name
 
@@ -19,12 +19,11 @@ resource "aws_ecr_lifecycle_policy" "cleanup" {
     rules = [
       {
         rulePriority = 1
-        description  = "Keep only last 3 container images"
+        description  = "Keep only the last 3 container images"
         selection = {
           tagStatus   = "any"
-          countType   = "sinceImagePushed"
-          countUnit   = "days"
-          countNumber = 14
+          countType   = "imageCountMoreThan"
+          countNumber = 3
         }
         action = {
           type = "expire"

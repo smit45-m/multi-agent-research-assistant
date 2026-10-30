@@ -2,7 +2,7 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -10,10 +10,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
     OPENAI_BASE_URL: str = "https://api.groq.com/openai/v1"
     OPENAI_MODEL_NAME: str = "llama-3.3-70b-versatile"
     FAST_MODEL_NAME: Optional[str] = None
     RESEARCH_MODEL_NAME: Optional[str] = None
+    DATA_DIR: Optional[str] = None
     LLM_TIMEOUT_SECONDS: float = Field(default=75, ge=1, le=240)
     FAST_BUDGET_SECONDS: float = Field(default=25, ge=3, le=120)
     BALANCED_BUDGET_SECONDS: float = Field(default=75, ge=5, le=240)
@@ -76,6 +78,20 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=str(PROJECT_ROOT / ".env"), env_file_encoding="utf-8", extra="ignore"
     )
+
+    @model_validator(mode="after")
+    def _sync_deployment_aliases(self) -> "Settings":
+        # Allow GROQ_API_KEY from deployment .env files to populate OPENAI_API_KEY automatically
+        if not self.OPENAI_API_KEY and self.GROQ_API_KEY:
+            self.OPENAI_API_KEY = self.GROQ_API_KEY
+        # Allow DATA_DIR to anchor persistent SQLite auth DB and vector store paths
+        if self.DATA_DIR:
+            data_root = Path(self.DATA_DIR)
+            if self.VECTOR_STORE_PATH == str(PROJECT_ROOT / "data" / "vector_store"):
+                self.VECTOR_STORE_PATH = str(data_root / "vector_store")
+            if self.AUTH_DB_PATH == str(PROJECT_ROOT / "data" / "auth.db"):
+                self.AUTH_DB_PATH = str(data_root / "auth.db")
+        return self
 
     @property
     def gemini_configured(self) -> bool:

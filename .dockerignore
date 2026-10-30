@@ -1,0 +1,34 @@
+# Keep the build context small and never ship secrets or local state into the image.
+.git
+.github
+.gitignore
+.dockerignore
+**/__pycache__
+**/*.pyc
+**/*.pyo
+.pytest_cache
+.ruff_cache
+.venv
+venv
+env
+
+# Secrets and local runtime state
+.env
+.env.*
+!.env.example
+data/
+scratch/
+*.log
+
+# Infrastructure code and state (contains secrets in tfvars/tfstate)
+terraform/
+
+# Frontend sources: the built bundle is emitted to app/static by `npm run build`
+frontend/
+
+# Tests, benchmarks and docs are not needed at runtime
+tests/
+benchmarks/
+docs/
+*.md
+!README.md

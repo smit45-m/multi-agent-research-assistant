@@ -46,7 +46,7 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# Security Group: Allow HTTP (80), HTTPS (443), and custom app port (8000)
+# Security Group: Allow HTTP (80) and HTTPS (443) via Caddy reverse proxy
 resource "aws_security_group" "app_sg" {
   name        = "research-assistant-sg"
   description = "Security group for Multi-Agent Research Assistant"
@@ -64,14 +64,6 @@ resource "aws_security_group" "app_sg" {
     description = "HTTPS access"
     from_port   = 443
     to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "Direct FastAPI port if needed"
-    from_port   = 8000
-    to_port     = 8000
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
