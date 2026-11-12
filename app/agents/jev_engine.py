@@ -296,23 +296,24 @@ class GeminiDecisionEngine:
                 "research": 1.5,
                 "privacy": 0.5,
             }
-            if privacy_mode or any(k in q_lower for k in ("internal", "confidential", "proprietary", "private", "nda", "restricted")):
+            privacy_kw = bool(re.search(r"\b(?:internal|confidential|proprietary|private|nda|restricted)\b", q_lower))
+            if effective_privacy or (not explicit_mode and privacy_kw):
                 mode_logits["privacy"] += 8.0
-            elif any(k in q_lower for k in ("quick", "fast", "brief", "what is", "define", "who is", "summary", "short", "<5s")):
+            elif re.search(r"\b(?:quick|fast|brief|what is|define|who is|summary|short)\b|<5s", q_lower):
                 mode_logits["fast"] += 4.0
-            elif any(k in q_lower for k in ("compare", "comprehensive", "deep", "exhaustive", "state of the art", "detailed research", "survey", "trends", "literature review")):
+            elif re.search(r"\b(?:compare|comprehensive|deep|exhaustive|state of the art|detailed research|survey|trends|literature review)\b", q_lower):
                 mode_logits["research"] += 4.5
             elif q_len > 120 or q_clean.count("\n") > 1:
                 mode_logits["research"] += 2.0
 
             if mode in ("fast", "quick"):
-                mode_logits["fast"] += 6.0
+                mode_logits["fast"] += 10.0
             elif mode in ("research", "deep"):
-                mode_logits["research"] += 6.0
-            elif mode == "privacy":
-                mode_logits["privacy"] += 8.0
+                mode_logits["research"] += 10.0
+            elif mode == "privacy" or effective_privacy:
+                mode_logits["privacy"] += 10.0
             elif mode == "balanced":
-                mode_logits["balanced"] += 6.0
+                mode_logits["balanced"] += 10.0
 
             mode_probs = _softmax(mode_logits, temperature=0.85)
             selected_mode = max(mode_probs.items(), key=lambda x: x[1])[0]

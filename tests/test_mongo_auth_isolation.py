@@ -559,3 +559,24 @@ def test_cross_thread_memory_recall_end_to_end_without_attachments(isolated_env,
     assert "12 mK" in body["report"]
     assert body["memory_context_used"]["short_term_count"] >= 1 or body["memory_context_used"]["long_term_count"] >= 1
     assert seen_payloads and "Project Aether-9" in seen_payloads[0]
+
+
+def test_research_mode_with_standard_word_not_hijacked_by_nda_substring():
+    from app.agents.meta_agent import MetaAgent
+
+    cfg = MetaAgent().analyze_and_configure(
+        "Compare FlashAttention vs standard Transformer self-attention in HBM memory complexity, SRAM tiling, and exactness.",
+        mode="research",
+        depth="deep",
+        privacy_mode=False,
+    )
+    assert cfg["resolved_mode"] == "research"
+    assert cfg["selected_orchestrator"] == "langgraph"
+
+    # Whole-word 'NDA' in auto mode still triggers privacy protection
+    cfg_nda = MetaAgent().analyze_and_configure(
+        "Review our confidential NDA merger memo.",
+        mode="auto",
+        privacy_mode=False,
+    )
+    assert cfg_nda["resolved_mode"] == "privacy"

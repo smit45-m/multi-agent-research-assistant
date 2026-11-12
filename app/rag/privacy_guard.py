@@ -24,6 +24,7 @@ _AIR_GAP_STATE = threading.local()
 
 # Patterns for sensitive company PII / credentials
 PII_PATTERNS = [
+    (re.compile(r"\b(Primary\s+Owner|Owner|Author|Contact|Employee|Patient|Prepared\s+by)(\s*:\s*)([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})"), r"\1\2[NAME_PROTECTED]"),
     (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b"), "[EMAIL_PROTECTED]"),
     (re.compile(r"\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"), "[PHONE_PROTECTED]"),
     (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "[SSN_PROTECTED]"),

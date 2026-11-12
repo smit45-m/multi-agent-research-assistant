@@ -465,6 +465,16 @@ Synthesizing evidence for **"{query}"**: the core concepts center on establishin
                 "research": (3200 if docs else 3600, research_grounded_style if docs else (research_technical_style if is_technical_or_deep else research_general_style))
             }
             max_tokens, style = lengths.get(mode, lengths["balanced"])
+            if mode in ("fast", "quick") and has_user_memory and (
+                re.search(r"\b(?:brief|briefly|concise|concisely|recap)\b", query, re.I)
+                or "concise" in user_mem_ctx.lower()
+            ):
+                style = (
+                    "Respond concisely and directly (120-260 words) respecting the signed-in user's remembered brevity "
+                    "preference in `personalized_user_memory`. State the exact requested metrics, codenames, or "
+                    "workspace status using clean bullet points with bracketed citations [1], [2] where docs apply, "
+                    "and do NOT pad with generic math formulas or fabricated comparison columns."
+                )
             if not docs and has_user_memory and route.get("private_context"):
                 max_tokens = min(max_tokens, 1400)
                 style = (

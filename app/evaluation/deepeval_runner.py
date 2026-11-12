@@ -1086,7 +1086,7 @@ def evaluate_product_subsystems() -> Dict[str, Any]:
     with tempfile.TemporaryDirectory() as tmp_dir:
         from app.db.mongo_engine import MultiTenantMongoManager
         iso_mgr = MultiTenantMongoManager(mongodb_uri="", data_dir=tmp_dir, require_official=False)
-        db = AuthDatabase(db_path=os.path.join(tmp_dir, "no_legacy.db"), manager=iso_mgr)
+        db = AuthDatabase(db_path=str(Path(tmp_dir) / "no_legacy.db"), manager=iso_mgr)
         unique_suffix = str(int(time.time() * 1000))
         u1 = db.create_user(f"alice.{unique_suffix}@example.com", "StrongPass!123", "Alice")
         u2 = db.create_user(f"bob.{unique_suffix}@example.com", "StrongPass!456", "Bob")
