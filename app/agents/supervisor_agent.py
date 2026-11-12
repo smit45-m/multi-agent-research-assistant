@@ -101,10 +101,14 @@ class SupervisorAgent:
             jev_arbitration["winner_action"] == "elevate_llm_pass" and
             not state.get("offline") and
             draft and
-            not draft.startswith("## Not enough")
+            not draft.startswith("## Not enough") and
+            state.get("answer_origin") not in ("insufficient_evidence", "llm_user_memory")
         )
 
-        if should_invoke_llm:
+        elevated = draft
+        if draft.startswith("## Not enough") or state.get("answer_origin") == "insufficient_evidence":
+            elevated = draft
+        elif should_invoke_llm:
             try:
                 evidence_summary = [
                     {"id": i + 1, "title": s.get("title", f"Source {i+1}"), "snippet": s.get("snippet", "")[:400]}

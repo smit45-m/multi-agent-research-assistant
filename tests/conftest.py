@@ -18,10 +18,15 @@ def mock_search_tool():
         yield mock_s
 
 @pytest.fixture
-def mock_settings():
+def mock_settings(tmp_path):
     return Settings(
         OPENAI_API_KEY="sk-test-key",
-        LOG_LEVEL="INFO"
+        LOG_LEVEL="INFO",
+        MONGODB_URI="",
+        MONGODB_REQUIRE_OFFICIAL=False,
+        MONGODB_DATA_DIR=str(tmp_path / "mongo_test"),
+        USER_WORKSPACES_DIR=str(tmp_path / "user_workspaces"),
+        AUTH_DB_PATH=str(tmp_path / "no_legacy_auth.db"),
     )
 
 @pytest.fixture
@@ -37,13 +42,27 @@ def mock_vector_store():
     return store
 
 @pytest.fixture
-def test_client(mock_settings, mock_vector_store):
-    with patch("app.config.get_settings", return_value=mock_settings):
-        with patch("app.main.vector_store", mock_vector_store):
-            app = create_app()
-            app.state.vector_store = mock_vector_store
-            client = TestClient(app)
+def test_client(mock_settings, mock_vector_store, monkeypatch):
+    from app.db.mongo_engine import reset_mongo_manager
+    from app.db.user_repository import clear_cached_user_vector_stores
+    monkeypatch.setenv("MONGODB_URI", "")
+    monkeypatch.setenv("MONGODB_REQUIRE_OFFICIAL", "false")
+    reset_mongo_manager(
+        mongodb_uri="",
+        data_dir=mock_settings.MONGODB_DATA_DIR,
+        require_official=False,
+    )
+    clear_cached_user_vector_stores()
+    with patch("app.config.get_settings", return_value=mock_settings), \
+         patch("app.main.get_settings", return_value=mock_settings), \
+         patch("app.db.mongo_engine.get_settings", return_value=mock_settings), \
+         patch("app.db.user_repository.get_settings", return_value=mock_settings), \
+         patch("app.main.vector_store", mock_vector_store):
+        app = create_app()
+        app.state.vector_store = mock_vector_store
+        with TestClient(app) as client:
             yield client
+    clear_cached_user_vector_stores()
 
 @pytest.fixture
 def sample_documents():

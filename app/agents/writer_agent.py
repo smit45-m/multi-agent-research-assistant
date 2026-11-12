@@ -255,6 +255,9 @@ Synthesizing evidence for **"{query}"**: the core concepts center on establishin
                     "source_type": d.get("source_type", "document"),
                     "snippet": d["content"][:1400], "relevance_score": d.get("relevance_score", 0.85)} for i, d in enumerate(docs)]
         
+        user_mem_ctx = (state.get("user_memory_context") or "").strip()
+        has_user_memory = bool(user_mem_ctx)
+
         confidence = float(state.get("confidence_score") or 0.88)
         avg_relevance = sum(float(s.get("relevance_score", 0.85)) for s in sources) / max(len(sources), 1)
         composite_accuracy = round(0.40 * min(avg_relevance, 1.0) + 0.40 * confidence + 0.20 * 0.95, 3)
@@ -351,9 +354,11 @@ Synthesizing evidence for **"{query}"**: the core concepts center on establishin
                 origin = "local_llm_private"
                 state["model"] = used_model
             else:
-                report = synthesize_local_airgapped_report(query, docs, confidence=confidence)
+                report = synthesize_local_airgapped_report(
+                    query, docs, confidence=confidence, user_memory_context=user_mem_ctx
+                )
                 report = format_formulas_and_diagrams(report, query)
-                origin = "airgapped_local_rag"
+                origin = "airgapped_local_rag" if docs else "airgapped_user_memory"
                 state["model"] = "in-process-synthesizer"
 
             state["final_report"] = report
@@ -366,7 +371,12 @@ Synthesizing evidence for **"{query}"**: the core concepts center on establishin
             state["agent_telemetry"]["writer_time_ms"] += round((time.perf_counter() - start) * 1000, 3)
             return state
 
-        must_abstain = not docs and (strict or fresh or source_filtered or route.get("private_context"))
+        must_abstain = not docs and (
+            strict
+            or fresh
+            or source_filtered
+            or (route.get("private_context") and not has_user_memory)
+        )
         if must_abstain:
             report = insufficient_answer(query)
             origin = "insufficient_evidence"
@@ -455,6 +465,14 @@ Synthesizing evidence for **"{query}"**: the core concepts center on establishin
                 "research": (3200 if docs else 3600, research_grounded_style if docs else (research_technical_style if is_technical_or_deep else research_general_style))
             }
             max_tokens, style = lengths.get(mode, lengths["balanced"])
+            if not docs and has_user_memory and route.get("private_context"):
+                max_tokens = min(max_tokens, 1400)
+                style = (
+                    "Answer the signed-in user's personal memory / workspace recall question directly and clearly "
+                    "(180-480 words). Respect any formatting preferences in `personalized_user_memory`, accurately "
+                    "state the remembered codenames, targets, metrics, files, and prior topics from "
+                    "`personalized_user_memory`, and keep the response focused without generic filler."
+                )
             if strict:
                 policy = "Strict Grounding Mode: Use only supplied evidence. Cite every empirical claim with [1], [2] and do not introduce external unverified facts."
             elif docs:
@@ -463,6 +481,14 @@ Synthesizing evidence for **"{query}"**: the core concepts center on establishin
                     "IMPORTANT: Never refuse to answer parts of the user's question that are not in the retrieved snippets — "
                     "if the user asks a multi-part or broad technical question, seamlessly answer all parts of their question "
                     "with complete equations and explanations while citing [1], [2] for facts from the supplied evidence."
+                )
+            elif has_user_memory:
+                policy = (
+                    "No new external documents matched this turn, so ground your response in the signed-in user's "
+                    "`personalized_user_memory` (Short-Term Conversation Context and Long-Term Remembered Context from their "
+                    "private MongoDB workspace). Directly answer from those remembered preferences, prior session answers, "
+                    "and referenced filenames. Respect remembered formatting preferences and do NOT invent fake [1] citations "
+                    "or fabricate facts absent from `personalized_user_memory`."
                 )
             else:
                 policy = "No retrieved evidence is available. Provide a thoroughly helpful, accurate, well-structured explanation with pointwise details and a comparative table from foundational model knowledge. Do NOT invent fake citations or claim to have retrieved unsupplied documents."
@@ -474,9 +500,8 @@ Synthesizing evidence for **"{query}"**: the core concepts center on establishin
                 "evidence": evidence,
                 "analysis": state.get("analysis", {}),
             }
-            user_mem_ctx = (state.get("user_memory_context") or "").strip()
             if user_mem_ctx:
-                prompt_payload["personalized_user_memory"] = user_mem_ctx[:1500]
+                prompt_payload["personalized_user_memory"] = user_mem_ctx[:1800]
             prompt = json.dumps(prompt_payload, ensure_ascii=False)
             on_token = getattr(self, "on_token", None) or state.get("on_token") or state.get("options", {}).get("on_token")
             try:
@@ -499,11 +524,13 @@ Synthesizing evidence for **"{query}"**: the core concepts center on establishin
                 if docs and not (re.search(r"\[\d+\]", report) or re.search(r"\[Doc \d+\]", report) or re.search(r"\[Source \d+\]", report)):
                     # Soft warning rather than discarding the full answer
                     state["warnings"].append("Model did not include bracketed citation numbers for all passages.")
-                origin = "llm_grounded" if docs else "llm_general"
-                if not docs:
+                origin = "llm_grounded" if docs else ("llm_user_memory" if has_user_memory else "llm_general")
+                if not docs and not has_user_memory:
                     active_model = getattr(self.llm, "model", "Multi-Agent System")
                     report = f"> 💡 *Synthesized via {active_model} with multi-agent orchestration. Review original sources before relying on conclusions.*\n\n{report}"
                     state["warnings"].append("This is an AI-synthesized explanation from foundational knowledge.")
+                elif not docs and has_user_memory:
+                    state["warnings"].append("Answered using this user's private Short-Term and Long-Term MongoDB memory context.")
             except Exception as exc:
                 state["warnings"].append(str(exc) if isinstance(exc, RuntimeError) else f"Model generation error: {exc}")
                 report = self._generate_fallback_report(query, state.get("analysis", {}), sources, confidence)

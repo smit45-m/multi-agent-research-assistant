@@ -31,14 +31,15 @@ _INITIALIZED_AUTH_CLIENTS: set[tuple[int, str]] = set()
 class AuthDatabase:
     """Thread-safe MongoDB manager for user records, roles, sessions, and per-user DB mapping."""
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: Optional[str] = None, manager: Any = None):
         self._lock = threading.RLock()
+        self._custom_manager = manager
         self.legacy_sqlite_path = Path(db_path or get_settings().AUTH_DB_PATH)
         self._init_db()
 
     @property
     def _manager(self):
-        return get_mongo_manager()
+        return self._custom_manager or get_mongo_manager()
 
     @property
     def _users(self):

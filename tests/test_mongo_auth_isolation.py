@@ -455,3 +455,107 @@ def test_official_mongo_mode_refuses_silent_custom_fallback(tmp_path: Path, monk
             data_dir=tmp_path / "m2",
             require_official=True,
         )
+
+
+def test_writer_uses_private_user_memory_instead_of_abstaining():
+    from app.agents.writer_agent import WriterAgent
+    from app.agents.state import create_initial_state
+
+    class _StubLLM:
+        model = "stub-gemini"
+
+        def __init__(self):
+            self.prompts = []
+
+        def invoke(self, messages):
+            self.prompts.append("\n".join(getattr(m, "content", str(m)) for m in messages))
+            return type("Msg", (), {"content": "## Recalled Cryo Summary\n- Codename: **Project Aether-9**\n- Target: **12 mK**"})()
+
+    stub = _StubLLM()
+    writer = WriterAgent(llm=stub)
+
+    # With private_context=True and user_memory_context populated -> MUST recall, never abstain
+    state_with_mem = create_initial_state(
+        "Remember what I prefer and researched earlier? Recap my cryo controller codename.",
+        rag_mode="hybrid",
+        orchestrator="langgraph",
+        user_memory_context=(
+            "Long-Term Remembered Context:\n"
+            "  1. [document_insight] Cryo controller Project Aether-9 runs at 12 mK and 415 microseconds [Files: cryo.pdf]"
+        ),
+    )
+    state_with_mem["routing_metadata"] = {"private_context": True, "per_source_chars": 2000}
+    res_mem = writer.write(state_with_mem)
+    assert res_mem["answer_origin"] == "llm_user_memory"
+    assert "Project Aether-9" in res_mem["final_report"]
+    assert "12 mK" in res_mem["final_report"]
+    assert len(stub.prompts) == 1 and "personalized_user_memory" in stub.prompts[0]
+
+    # With private_context=True and NO docs and NO user_memory_context -> MUST still safely abstain
+    state_empty = create_initial_state(
+        "Summarize my internal private report.",
+        rag_mode="hybrid",
+        orchestrator="langgraph",
+        user_memory_context="",
+    )
+    state_empty["routing_metadata"] = {"private_context": True}
+    res_empty = writer.write(state_empty)
+    assert res_empty["answer_origin"] == "insufficient_evidence"
+    assert res_empty["final_report"].startswith("## Not enough evidence")
+
+
+def test_cross_thread_memory_recall_end_to_end_without_attachments(isolated_env, monkeypatch):
+    from langchain_core.documents import Document
+    from app.agents.writer_agent import WriterAgent
+    from app.db.user_repository import get_user_vector_store
+    from app.db.user_memory import UserMemoryService
+
+    client: TestClient = isolated_env["client"]
+    alice = _signup(client, "alice_mem@example.com", "AliceMem#1", "Alice Mem").json()
+    alice_hdr = {"Authorization": f"Bearer {alice['access_token']}"}
+    alice_db = alice["user"]["db_name"]
+    alice_id = alice["user"]["id"]
+
+    # Seed Alice's private vector store & turn 1 memory (preferences + PDF findings)
+    uvs = get_user_vector_store(alice_db)
+    uvs.add_documents([
+        Document(
+            page_content="Project Aether-9 superconducting cryo controller holds 12 mK target at 415 microseconds latency.",
+            metadata={"filename": "cryo_spec.pdf", "title": "cryo_spec.pdf", "document_id": "doc-cryo-1", "format": "pdf"},
+        )
+    ])
+    UserMemoryService(alice_db, alice_id).update_after_turn(
+        chat_id="turn-1",
+        thread_id="thread-alpha",
+        query="Please always respond in concise bullet points. Summarize Project Aether-9.",
+        report="Project Aether-9 maintains a 12 mK target temperature and 415 microseconds cryo control loop.",
+        attachment_names=["cryo_spec.pdf"],
+        sources=[{"title": "cryo_spec.pdf"}],
+    )
+
+    seen_payloads = []
+
+    def fake_call_model(llm, state, system, prompt, **kwargs):
+        seen_payloads.append(prompt)
+        return "- **Cryo Controller**: Project Aether-9\n- **Temperature Target**: 12 mK\n- **Preference**: Concise bullets"
+
+    import app.agents.writer_agent as wa_mod
+    monkeypatch.setattr(wa_mod, "call_model", fake_call_model)
+
+    res = client.post(
+        "/api/v1/research/sync",
+        headers=alice_hdr,
+        json={
+            "query": "Remember what I prefer and researched earlier? Briefly recap my cryo controller codename and temperature target.",
+            "mode": "research",
+            "web_search": False,
+            "thread_id": "brand-new-thread-beta",
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert not body["report"].startswith("## Not enough evidence")
+    assert "Project Aether-9" in body["report"]
+    assert "12 mK" in body["report"]
+    assert body["memory_context_used"]["short_term_count"] >= 1 or body["memory_context_used"]["long_term_count"] >= 1
+    assert seen_payloads and "Project Aether-9" in seen_payloads[0]

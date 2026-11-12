@@ -99,7 +99,12 @@ class RetrieverAgent:
                                        "dense_score": float(meta.get("dense_score", 0))})
             except Exception as exc:
                 state["warnings"].append(f"Local retrieval failed: {exc}")
-        relevant_local = [d for d in candidates if d.get("user_supplied") or relevance(query, d["content"], d["title"]) >= self.minimum or d.get("dense_score", 0) >= 0.5]
+        relevant_local = [
+            d for d in candidates
+            if d.get("user_supplied")
+            or d.get("dense_score", 0) >= 0.5
+            or any(relevance(q, d["content"], d["title"]) >= self.minimum for q in questions)
+        ]
         permitted_web = options.get("web_search", True) and get_settings().WEB_SEARCH_ENABLED and not state.get("offline")
         # Private/library questions never leak into public search automatically.
         if state.get("mode") == "privacy" or options.get("privacy_mode"):
@@ -174,7 +179,8 @@ class RetrieverAgent:
                     unique[key] = document
         for d in unique.values():
             if not d.get("user_supplied"):
-                d["relevance_score"] = max(relevance(query, d["content"], d.get("title", "")), 0.85 * float(d.get("dense_score", 0)))
+                lex_rel = max((relevance(q, d["content"], d.get("title", "")) for q in questions), default=0.0)
+                d["relevance_score"] = max(lex_rel, 0.85 * float(d.get("dense_score", 0)))
         ordered = sorted(unique.values(), key=lambda d: d["relevance_score"], reverse=True)
         if ordered and not any(d.get("user_supplied") for d in ordered):
             best_rel = ordered[0]["relevance_score"]

@@ -463,11 +463,25 @@ def synthesize_local_airgapped_report(
     query: str,
     docs: List[Dict[str, Any]],
     confidence: float = 0.92,
+    user_memory_context: str = "",
 ) -> str:
     """
     In-process, zero-network-egress semantic RAG synthesizer fallback for confidential company data
     when no local LLM daemon (Ollama / LM Studio) is running.
     """
+    if not docs and user_memory_context and user_memory_context.strip():
+        safe_mem = redact_pii(user_memory_context.strip())
+        return f"""# 🔒 Executive Summary (Private Air-Gapped Memory Context)
+
+> 🛡️ **Privacy Guarantee**: Air-Gapped Mode is active. External cloud APIs and Web Search are strictly disabled.
+
+### 🧠 Personal Workspace Memory Recalled
+Using your isolated Short-Term and Long-Term MongoDB memory context for **"{query}"**:
+
+{safe_mem}
+
+*All context remained strictly inside your authenticated workspace with **0 bytes** sent to external cloud APIs.*
+"""
     if not docs:
         return f"""# 🔒 Executive Summary (Private Air-Gapped Mode)
 
