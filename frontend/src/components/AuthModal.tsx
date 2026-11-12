@@ -26,7 +26,6 @@ export function AuthModal({ isOpen, onClose, onSuccess }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState<"user" | "admin">("user");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -44,7 +43,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: Props) {
           throw new Error("Please provide both email and password.");
         }
         const data = await loginApi(email.trim(), password);
-        onSuccess(data.user, `Welcome back, ${data.user.full_name}!`);
+        onSuccess(data.user, `Welcome back, ${data.user.full_name}! Your private database is ready.`);
         onClose();
       } else {
         if (!fullName.trim()) {
@@ -56,8 +55,8 @@ export function AuthModal({ isOpen, onClose, onSuccess }: Props) {
         if (password.length < 6) {
           throw new Error("Password must be at least 6 characters long.");
         }
-        const data = await signupApi(email.trim(), password, fullName.trim(), role);
-        onSuccess(data.user, `Account created successfully! Welcome, ${data.user.full_name}.`);
+        const data = await signupApi(email.trim(), password, fullName.trim(), "user");
+        onSuccess(data.user, `Private database provisioned! Welcome, ${data.user.full_name}.`);
         onClose();
       }
     } catch (err) {
@@ -179,24 +178,10 @@ export function AuthModal({ isOpen, onClose, onSuccess }: Props) {
 
           {tab === "signup" && (
             <div className="auth-field">
-              <label>Account Role</label>
-              <div className="auth-role-selector">
-                <button
-                  type="button"
-                  className={`auth-role-option ${role === "user" ? "selected" : ""}`}
-                  onClick={() => setRole("user")}
-                >
-                  <CheckCircle2 size={14} className={role === "user" ? "visible" : "hidden"} />
-                  Researcher (User)
-                </button>
-                <button
-                  type="button"
-                  className={`auth-role-option ${role === "admin" ? "selected" : ""}`}
-                  onClick={() => setRole("admin")}
-                >
-                  <CheckCircle2 size={14} className={role === "admin" ? "visible" : "hidden"} />
-                  Administrator (Admin)
-                </button>
+              <label>Private Workspace Provisioning</label>
+              <div className="auth-role-note">
+                <CheckCircle2 size={15} />
+                <span>Creates a dedicated personal MongoDB database for your chats, uploaded files &amp; persistent memory (standard Researcher role).</span>
               </div>
             </div>
           )}

@@ -7,7 +7,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, UploadFile, File, Form, Depends, status
 from fastapi.responses import StreamingResponse
 
 from app.api.schemas.requests import ResearchQuery, BenchmarkRunRequest
@@ -17,6 +17,10 @@ from app.api.schemas.responses import (
     AgentTelemetryInfo,
     BenchmarkResponse
 )
+from app.auth.schemas import UserResponse
+from app.auth.security import get_optional_user
+from app.db.user_memory import UserMemoryService
+from app.db.user_repository import UserWorkspaceRepository, get_user_vector_store
 from app.tools.media_input import transcribe_audio_query
 from app.evaluation.benchmark_runner import BenchmarkEvaluator
 from app.utils.logger import setup_logger
@@ -24,8 +28,75 @@ from app.utils.logger import setup_logger
 logger = setup_logger(__name__, "INFO")
 router = APIRouter(prefix="/api/v1/research", tags=["Research"])
 
-# In-memory store for background task results
+# In-memory store for background task results + strict owner isolation map
 TASKS: Dict[str, ResearchResponse] = {}
+TASK_OWNERS: Dict[str, Optional[str]] = {}
+
+
+def _prepare_user_context(current_user: Optional[UserResponse], query: str, thread_id: Optional[str]):
+    if not current_user:
+        return None, "", {}
+    user_vs = get_user_vector_store(current_user.db_name)
+    mem_svc = UserMemoryService(current_user.db_name, current_user.id)
+    recalled = mem_svc.recall_context(query, thread_id=thread_id)
+    latest_topic = recalled["short_term"][-1].get("query", "") if recalled["short_term"] else ""
+    mem_meta = {
+        "short_term_count": recalled["short_term_count"],
+        "long_term_count": recalled["long_term_count"],
+        "short_term_queries": [x.get("query") for x in recalled["short_term"]],
+        "long_term_titles": [x.get("title") for x in recalled["long_term"]],
+        "latest_topic": latest_topic,
+    }
+    return user_vs, recalled["formatted_prompt_block"], mem_meta
+
+
+def _persist_user_turn(
+    current_user: Optional[UserResponse],
+    res: ResearchResponse,
+    query_obj: ResearchQuery,
+    mem_meta: dict,
+):
+    if not current_user:
+        return
+    try:
+        resolved_thread = res.thread_id or query_obj.thread_id or str(uuid.uuid4())
+        res.thread_id = resolved_thread
+        res.chat_id = res.task_id
+        res.memory_context_used = {
+            "short_term_count": mem_meta.get("short_term_count", 0),
+            "long_term_count": mem_meta.get("long_term_count", 0),
+            "short_term_queries": mem_meta.get("short_term_queries", []),
+            "long_term_titles": mem_meta.get("long_term_titles", []),
+        }
+        repo = UserWorkspaceRepository(current_user.db_name, current_user.id)
+        src_dicts = [s.model_dump() for s in (res.sources or [])]
+        saved_turn = repo.record_chat_turn(
+            chat_id=res.task_id,
+            thread_id=resolved_thread,
+            query=res.query,
+            report=res.report or "",
+            sources=src_dicts,
+            mode=res.mode,
+            rag_mode=res.rag_mode,
+            orchestrator=res.orchestrator,
+            model=res.model,
+            answer_origin=res.answer_origin,
+            attachment_ids=query_obj.attachment_ids,
+            confidence_score=res.confidence_score,
+            response_accuracy_score=res.response_accuracy_score,
+            processing_time_seconds=res.processing_time_seconds,
+            memory_context_used=res.memory_context_used,
+        )
+        UserMemoryService(current_user.db_name, current_user.id).update_after_turn(
+            chat_id=res.task_id,
+            thread_id=resolved_thread,
+            query=res.query,
+            report=res.report or "",
+            attachment_names=saved_turn.get("attachment_names", []),
+            sources=src_dicts,
+        )
+    except Exception as persist_err:
+        logger.warning(f"Failed persisting turn to user MongoDB DB: {persist_err}")
 
 def _build_sources(state_sources: list) -> list:
     """Helper to format sources list into SourceInfo objects."""
@@ -65,20 +136,25 @@ def perform_research_task(
     query: str, 
     rag_mode: str, 
     orchestrator: str, 
-    app_state: Any
+    app_state: Any,
+    current_user: Optional[UserResponse] = None,
+    query_obj: Optional[ResearchQuery] = None,
 ):
     """Background task executing the multi-agent workflow."""
     start_time = time.perf_counter()
     try:
+        user_vs, mem_ctx, mem_meta = _prepare_user_context(
+            current_user, query, query_obj.thread_id if query_obj else None
+        )
         if orchestrator == "crewai":
             from app.agents.crew import ResearchCrew
-            vstore = getattr(app_state, "vector_store", None)
+            vstore = user_vs or getattr(app_state, "vector_store", None)
             crew = ResearchCrew(vstore)
             result = crew.run(query)
             processing_time = time.perf_counter() - start_time
             sources = _build_sources(result.get("sources", []))
             tel = _build_telemetry(result.get("agent_telemetry", {}))
-            TASKS[task_id] = ResearchResponse(
+            res = ResearchResponse(
                 task_id=task_id,
                 status="completed",
                 query=query,
@@ -89,22 +165,33 @@ def perform_research_task(
                 synthesis_speedup_ratio=result.get("synthesis_speedup_ratio", 0.60),
                 processing_time_seconds=round(processing_time, 2),
                 orchestrator=orchestrator,
+                thread_id=(query_obj.thread_id if query_obj else None) or str(uuid.uuid4()),
+                chat_id=task_id,
                 telemetry=tel,
                 created_at=datetime.now(timezone.utc)
             )
+            if current_user and query_obj:
+                _persist_user_turn(current_user, res, query_obj, mem_meta)
+            TASKS[task_id] = res
         else:
             # Default: LangGraph
             graph = getattr(app_state, "research_graph", None)
             if graph is None:
                 from app.agents.graph import ResearchGraph
-                vstore = getattr(app_state, "vector_store", None)
+                vstore = user_vs or getattr(app_state, "vector_store", None)
                 graph = ResearchGraph(vstore)
 
-            state = graph.run(query, rag_mode=rag_mode)
+            state = graph.run(
+                query,
+                rag_mode=rag_mode,
+                user_vector_store=user_vs,
+                user_memory_context=mem_ctx,
+                user_memory_meta=mem_meta,
+            )
             processing_time = time.perf_counter() - start_time
             sources = _build_sources(state.get("sources_cited", []))
             tel = _build_telemetry(state.get("agent_telemetry", {}))
-            TASKS[task_id] = ResearchResponse(
+            res = ResearchResponse(
                 task_id=task_id,
                 status="completed",
                 query=query,
@@ -115,9 +202,16 @@ def perform_research_task(
                 synthesis_speedup_ratio=state.get("synthesis_speedup_ratio", 0.60),
                 processing_time_seconds=round(processing_time, 2),
                 orchestrator=state.get("orchestrator", orchestrator),
+                thread_id=(query_obj.thread_id if query_obj else None) or str(uuid.uuid4()),
+                chat_id=task_id,
+                model=state.get("model"),
+                answer_origin=state.get("answer_origin", "completed"),
                 telemetry=tel,
                 created_at=datetime.now(timezone.utc)
             )
+            if current_user and query_obj:
+                _persist_user_turn(current_user, res, query_obj, mem_meta)
+            TASKS[task_id] = res
     except Exception as e:
         logger.error(f"Research task {task_id} failed: {e}", exc_info=True)
         TASKS[task_id] = ResearchResponse(
@@ -128,19 +222,30 @@ def perform_research_task(
             created_at=datetime.now(timezone.utc)
         )
 
+
+@router.get("/local-models")
+async def get_local_models():
+    """Returns locally running on-device LLM models (Ollama / LM Studio) with 0 cloud egress."""
+    from app.rag.privacy_guard import list_local_llm_models
+    return list_local_llm_models()
+
+
 @router.post("/", response_model=ResearchResponse)
 async def create_research_task(
     query_obj: ResearchQuery,
     request: Request,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    current_user: Optional[UserResponse] = Depends(get_optional_user),
 ):
-    """Initiates an asynchronous multi-agent research workflow."""
+    """Initiates an asynchronous multi-agent research workflow scoped cleanly to the authenticated user."""
     task_id = str(uuid.uuid4())
+    TASK_OWNERS[task_id] = current_user.id if current_user else None
     response = ResearchResponse(
         task_id=task_id,
         status="pending",
         query=query_obj.query,
         orchestrator=query_obj.orchestrator,
+        thread_id=query_obj.thread_id,
         created_at=datetime.now(timezone.utc)
     )
     TASKS[task_id] = response
@@ -150,7 +255,9 @@ async def create_research_task(
         query_obj.query,
         query_obj.rag_mode,
         query_obj.orchestrator,
-        request.app.state
+        request.app.state,
+        current_user,
+        query_obj,
     )
     return response
 
@@ -164,22 +271,26 @@ _CACHE_TTL_SECONDS = 300.0
 @router.post("/sync", response_model=ResearchResponse)
 def execute_research_sync(
     query_obj: ResearchQuery,
-    request: Request
+    request: Request,
+    current_user: Optional[UserResponse] = Depends(get_optional_user),
 ):
     """
-    Synchronously runs the multi-agent research workflow.
-    Optimized for high-concurrency benchmarks, CLI evaluation, and instant results.
-    Uses request coalescing (single-flight) to prevent cache stampedes under heavy load.
+    Synchronously runs the multi-agent research workflow scoped cleanly to the authenticated user's
+    private MongoDB DB, vector store, and short/long-term memory.
     """
     task_id = str(uuid.uuid4())
+    TASK_OWNERS[task_id] = current_user.id if current_user else None
     start_t = time.perf_counter()
     is_leader = False
     event = None
+    # Never share cached responses across signed-in users or in privacy mode
     cache_key = (
-        None if (query_obj.mode == "privacy" or query_obj.privacy_mode)
+        None if (query_obj.mode == "privacy" or query_obj.privacy_mode or current_user is not None)
         else f"{query_obj.query.strip().lower()}:{query_obj.mode}:{query_obj.rag_mode}:{query_obj.orchestrator}"
     )
     now = time.time()
+    user_vs, mem_ctx, mem_meta = _prepare_user_context(current_user, query_obj.query, query_obj.thread_id)
+    resolved_thread = query_obj.thread_id or str(uuid.uuid4())
     
     if cache_key is not None:
         with _SYNTHESIS_CACHE_LOCK:
@@ -214,7 +325,7 @@ def execute_research_sync(
     try:
         if query_obj.orchestrator == "crewai":
             from app.agents.crew import ResearchCrew
-            vstore = getattr(request.app.state, "vector_store", None)
+            vstore = user_vs or getattr(request.app.state, "vector_store", None)
             crew = ResearchCrew(vstore)
             result = crew.run(query_obj.query)
             elapsed = time.perf_counter() - start_t
@@ -234,17 +345,22 @@ def execute_research_sync(
                 synthesis_speedup_ratio=speedup,
                 processing_time_seconds=round(elapsed, 2),
                 orchestrator=query_obj.orchestrator,
+                thread_id=resolved_thread,
+                chat_id=task_id,
                 telemetry=tel,
                 created_at=datetime.now(timezone.utc)
             )
-            with _SYNTHESIS_CACHE_LOCK:
-                _SYNTHESIS_CACHE[cache_key] = (now, res)
+            _persist_user_turn(current_user, res, query_obj, mem_meta)
+            TASKS[task_id] = res
+            if cache_key is not None:
+                with _SYNTHESIS_CACHE_LOCK:
+                    _SYNTHESIS_CACHE[cache_key] = (now, res)
             return res
         else:
             graph = getattr(request.app.state, "research_graph", None)
             if graph is None:
                 from app.agents.graph import ResearchGraph
-                vstore = getattr(request.app.state, "vector_store", None)
+                vstore = user_vs or getattr(request.app.state, "vector_store", None)
                 graph = ResearchGraph(vstore)
 
             state = graph.run(
@@ -258,7 +374,11 @@ def execute_research_sync(
                 web_search=query_obj.web_search,
                 strict_grounding=query_obj.strict_grounding,
                 attachment_ids=query_obj.attachment_ids,
-                privacy_mode=query_obj.privacy_mode
+                privacy_mode=query_obj.privacy_mode,
+                local_model=query_obj.local_model,
+                user_vector_store=user_vs,
+                user_memory_context=mem_ctx,
+                user_memory_meta=mem_meta,
             )
             elapsed = time.perf_counter() - start_t
             sources = _build_sources(state.get("sources_cited", []))
@@ -277,12 +397,18 @@ def execute_research_sync(
                 synthesis_speedup_ratio=speedup,
                 processing_time_seconds=round(elapsed, 2),
                 orchestrator=state.get("orchestrator", query_obj.orchestrator),
-                mode=query_obj.mode,
+                mode=state.get("mode", query_obj.mode),
+                rag_mode=state.get("rag_mode", query_obj.rag_mode),
+                model=state.get("model"),
                 answer_origin=state.get("answer_origin", "completed"),
                 warnings=state.get("warnings", []),
+                thread_id=resolved_thread,
+                chat_id=task_id,
                 telemetry=tel,
                 created_at=datetime.now(timezone.utc)
             )
+            _persist_user_turn(current_user, res, query_obj, mem_meta)
+            TASKS[task_id] = res
             if cache_key is not None and res.answer_origin in ("llm_grounded", "llm_general"):
                 with _SYNTHESIS_CACHE_LOCK:
                     _SYNTHESIS_CACHE[cache_key] = (now, res)
@@ -313,7 +439,9 @@ async def execute_audio_research_query(
     orchestrator: str = Form("auto"),
     privacy_mode: bool = Form(False),
     web_search: bool = Form(True),
-    strict_grounding: bool = Form(False)
+    strict_grounding: bool = Form(False),
+    thread_id: Optional[str] = Form(None),
+    current_user: Optional[UserResponse] = Depends(get_optional_user),
 ):
     """
     Accepts an audio recording (e.g. voice prompt, dictation, interview),
@@ -323,7 +451,7 @@ async def execute_audio_research_query(
     try:
         content = await audio_file.read()
         filename = audio_file.filename or "audio_query.wav"
-        transcribed_query = transcribe_audio_query(filename, content)
+        transcribed_query = transcribe_audio_query(filename, content, privacy_mode=(privacy_mode or mode == "privacy"))
         if not transcribed_query or len(transcribed_query.strip()) < 3:
             transcribed_query = f"Provide a research overview regarding audio recording {filename}"
 
@@ -334,9 +462,10 @@ async def execute_audio_research_query(
             orchestrator=orchestrator,  # type: ignore
             privacy_mode=privacy_mode,
             web_search=web_search,
-            strict_grounding=strict_grounding
+            strict_grounding=strict_grounding,
+            thread_id=thread_id,
         )
-        return execute_research_sync(query_obj, request)
+        return execute_research_sync(query_obj, request, current_user=current_user)
     except Exception as e:
         logger.error(f"Audio query error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Audio query processing failed: {str(e)}")
@@ -345,13 +474,16 @@ async def execute_audio_research_query(
 @router.post("/stream")
 def execute_research_stream(
     query_obj: ResearchQuery,
-    request: Request
+    request: Request,
+    current_user: Optional[UserResponse] = Depends(get_optional_user),
 ):
     """
     Streams multi-agent research execution and progressively generated report
-    using Server-Sent Events (SSE). Delivers real-time streamed motion with
-    comparative tables, pointwise explanations, and emojis.
+    using Server-Sent Events (SSE), scoped strictly to the authenticated user's
+    MongoDB DB, files, and short/long-term memory.
     """
+    user_vs, mem_ctx, mem_meta = _prepare_user_context(current_user, query_obj.query, query_obj.thread_id)
+    resolved_thread = query_obj.thread_id or str(uuid.uuid4())
     def event_stream():
         task_id = str(uuid.uuid4())
         start_t = time.perf_counter()
@@ -392,6 +524,10 @@ def execute_research_stream(
                     strict_grounding=query_obj.strict_grounding,
                     attachment_ids=query_obj.attachment_ids,
                     privacy_mode=query_obj.privacy_mode,
+                    local_model=query_obj.local_model,
+                    user_vector_store=user_vs,
+                    user_memory_context=mem_ctx,
+                    user_memory_meta=mem_meta,
                     on_token=on_token,
                     on_stage=on_stage
                 )
@@ -448,9 +584,19 @@ def execute_research_stream(
             synthesis_speedup_ratio=speedup,
             processing_time_seconds=round(elapsed, 2),
             orchestrator=state.get("orchestrator", query_obj.orchestrator),
+            mode=state.get("mode", query_obj.mode),
+            rag_mode=state.get("rag_mode", query_obj.rag_mode),
+            model=state.get("model"),
+            answer_origin=state.get("answer_origin", "completed"),
+            warnings=state.get("warnings", []),
+            thread_id=resolved_thread,
+            chat_id=task_id,
             telemetry=tel,
             created_at=datetime.now(timezone.utc)
         )
+        TASK_OWNERS[task_id] = current_user.id if current_user else None
+        _persist_user_turn(current_user, res, query_obj, mem_meta)
+        TASKS[task_id] = res
         yield f"data: {json.dumps({'type': 'complete', 'response': res.model_dump(mode='json')})}\n\n"
 
     return StreamingResponse(
@@ -503,9 +649,41 @@ async def run_benchmark_suite(request_body: Optional[BenchmarkRunRequest] = None
     )
 
 @router.get("/{task_id}", response_model=ResearchResponse)
-async def get_research_task(task_id: str):
-    """Retrieves status and report of a background research task."""
+async def get_research_task(
+    task_id: str,
+    current_user: Optional[UserResponse] = Depends(get_optional_user),
+):
+    """Retrieves status and report of a research task with strict owner authorization."""
     task = TASKS.get(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return task
+    if task is not None:
+        owner_id = TASK_OWNERS.get(task_id)
+        if owner_id is not None and (not current_user or current_user.id != owner_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: this research chat belongs to a different user.",
+            )
+        return task
+
+    if current_user:
+        chat = UserWorkspaceRepository(current_user.db_name, current_user.id).get_chat(task_id)
+        if chat:
+            return ResearchResponse(
+                task_id=chat["chat_id"],
+                status="completed",
+                query=chat["query"],
+                report=chat.get("report", ""),
+                sources=[SourceInfo(**s) for s in chat.get("sources", [])],
+                confidence_score=float(chat.get("confidence_score") or 0.85),
+                response_accuracy_score=chat.get("response_accuracy_score"),
+                processing_time_seconds=float(chat.get("processing_time_seconds") or 0.0),
+                mode=chat.get("mode", "fast"),
+                rag_mode=chat.get("rag_mode", "hybrid"),
+                orchestrator=chat.get("orchestrator", "direct"),
+                model=chat.get("model"),
+                answer_origin=chat.get("answer_origin", "completed"),
+                thread_id=chat.get("thread_id"),
+                chat_id=chat.get("chat_id"),
+                memory_context_used=chat.get("memory_context_used") or {},
+                created_at=datetime.fromisoformat(chat["created_at"]),
+            )
+    raise HTTPException(status_code=404, detail="Task not found")

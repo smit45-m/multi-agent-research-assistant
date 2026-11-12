@@ -50,8 +50,9 @@ class BM25Retriever:
 
 
 class HybridRetriever:
-    def __init__(self, vector_store, rrf_k=60, min_relevance=0.18):
+    def __init__(self, vector_store, rrf_k=60, min_relevance=0.18, relative_cutoff=0.5):
         self.vector_store = vector_store
+        self.relative_cutoff = relative_cutoff
         self.rrf_k = rrf_k
         self.min_relevance = min_relevance
         self.bm25 = BM25Retriever()
@@ -196,9 +197,14 @@ class HybridRetriever:
                     continue
                 seen_chunk_signatures.append(clean_words)
 
-                ranked.append((score + 0.25 * rrf_score, doc))
+                ranked.append((score + 0.25 * rrf_score, doc, max(lexical, 0.85 * semantic)))
             ranked.sort(key=lambda item: item[0], reverse=True)
-            result = [doc for _, doc in ranked[:top_k]]
+            # Relative cutoff: a passage must carry at least RELATIVE_CUTOFF of the best passage's
+            # lexical/semantic evidence, otherwise it only matched via a stray shared term (RRF alone).
+            if ranked:
+                best_base = max(item[2] for item in ranked)
+                ranked = [item for i, item in enumerate(ranked) if i == 0 or item[2] >= self.relative_cutoff * best_base]
+            result = [doc for _, doc, _ in ranked[:top_k]]
             if mode == "hierarchical":
                 expanded = []
                 for doc in result:

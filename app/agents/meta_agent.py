@@ -34,30 +34,33 @@ class MetaAgent:
         rag_mode: str = "auto",
         orchestrator: str = "auto",
         corpus_size: int = 0,
-        has_attachments: bool = False
+        has_attachments: bool = False,
+        privacy_mode: bool = False,
     ) -> Dict[str, Any]:
         """
         Calculates the complete adaptive execution profile for the query
         grounded in TypeSafe AI's Jev (System One AI Decision Model).
         """
-        # Execute Jev System One decision optimization across candidates
+        effective_privacy = bool(privacy_mode or mode == "privacy")
+        # Execute Jev System One decision optimization across candidates (strictly offline when air-gapped)
         jev_plan = self.jev_engine.optimize_pipeline_config(
             query=query,
-            mode=mode,
+            mode="privacy" if effective_privacy else mode,
             depth=depth,
             rag_mode=rag_mode,
             orchestrator=orchestrator,
             corpus_size=corpus_size,
-            has_multimodal=has_attachments
+            has_multimodal=has_attachments,
+            privacy_mode=effective_privacy,
         )
 
-        resolved_mode = jev_plan["target_mode"]
+        resolved_mode = "privacy" if effective_privacy else jev_plan["target_mode"]
         chunk_size = jev_plan["chunk_size"]
         chunk_overlap = jev_plan["chunk_overlap"]
         selected_rag = jev_plan["selected_rag_mode"]
         selected_engine = jev_plan["selected_orchestrator"]
         latency_sla = jev_plan["sla_ceiling_s"]
-        llm_model = self.settings.model_for(resolved_mode)
+        llm_model = jev_plan.get("recommended_model") if resolved_mode == "privacy" else self.settings.model_for(resolved_mode)
 
         return {
             "resolved_mode": resolved_mode,

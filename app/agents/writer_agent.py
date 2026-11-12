@@ -52,9 +52,11 @@ For technical, coding, or algorithm questions:
 ## 6. Deep Technical, Architectural & Mathematical Masterclass Standards (Mandatory for Technical & Research Inquiries)
 When explaining machine learning architectures, algorithms, data structures, mathematical models, or systems engineering concepts (e.g., Transformers, Attention Mechanisms, Backpropagation, CNNs, Diffusion Models, Mamba, BPE, Raft, Distributed Systems):
 - **Exhaustive Component Deconstruction**: Never stay at a high-level summary. Systematically deconstruct EVERY single sub-module, layer, projection, normalization, residual connection, and activation.
-- **Formulas & Mathematical Rigor**:
-  - Write every mathematical equation explicitly using standard LaTeX blocks (`$$...$$` for display equations, `$...$` for inline math).
-  - **Explicit Definition of Every Variable & Tensor Dimension**: State the exact tensor shape (e.g. $[B, L, D]$ or $\mathbb{R}^{n \times d_k}$) and meaning of every symbol and weight matrix ($Q, K, V, W^Q, W^K, W^V, W^O, d_{model}, d_k$).
+- **Formulas, Equations & Visual Architecture Diagrams**:
+  - NEVER dump raw unrendered LaTeX macros like `\text{...}`, `\qquad`, `\mathbf{...}`, or comma-separated `$$...$$,$$...$$` strings.
+  - Write mathematical formulas using clean, readable Unicode mathematical notation inside fenced formula blocks or inline code (e.g., `Attention(Q, K, V) = softmax((Q · Kᵀ) / √dₖ) · V`, `H_out = ⌊(H + 2P - K) / S⌋ + 1`, `MaxPool(X)ᵢ = max_{(u,v) ∈ Wᵢ} X_{u,v}`, `y = F(x, {Wᵢ}) + x`).
+  - Include a visual **Architecture & Data-Flow Diagram** using clean Unicode box-and-arrow diagrams (`┌───┐ ──►`) showing the layer-by-layer flow and tensor dimensions (e.g. `[B, L, D]` or `ℝ^[n × d_k]`).
+  - **Explicit Definition of Every Variable & Tensor Dimension**: State the exact tensor shape and meaning of every symbol and weight matrix (`Q, K, V, W_Q, W_K, W_V, W_O, d_model, d_k`).
   - **💡 Deep Equation Intuition**: Explain WHY the equation is structured that way!
     * Why is dot-product chosen for similarity?
     * Why scale by $\\sqrt{d_k}$? (Explicitly explain the variance derivation: as dimension grows, dot products grow large in magnitude, pushing softmax into extreme regions with vanishingly small gradients).
@@ -85,6 +87,7 @@ When explaining machine learning architectures, algorithms, data structures, mat
 - If answering from foundational model knowledge (no retrieved sources), provide an authoritative, technically rigorous explanation. Do NOT invent fake citations or claim to have retrieved unsupplied documents.
 - Clearly separate facts from interpretation: distinguish Fact, Assumption, Inference, and Opinion.
 - Be brutally honest: if something is incorrect, inefficient, or based on a common misconception, correct it respectfully but directly.
+- When `personalized_user_memory` (Short-Term & Long-Term context from the signed-in user's private DB) is present, use it naturally to maintain multi-turn continuity, resolve follow-up references, remember previously discussed files/topics, and respect remembered user preferences—while still grounding factual claims strictly in the current evidence.
 - Do not append a bibliography or source list: the interface renders sources separately."""
 
 
@@ -265,19 +268,93 @@ Synthesizing evidence for **"{query}"**: the core concepts center on establishin
             state.get("privacy_mode", False)
         )
         if is_privacy:
-            from app.rag.privacy_guard import synthesize_local_airgapped_report, call_local_llm
-            local_report = None
-            try:
-                local_report = call_local_llm(SYSTEM, f"User Question: {query}\n\nEvidence:\n{json.dumps(sources, indent=1)}")
-            except Exception:
-                local_report = None
-            
-            if local_report and len(local_report.strip()) > 80:
-                report = f"# 🔒 Executive Summary (Local Open-Source LLM)\n\n> 🛡️ *Synthesized via local open-source LLM daemon over localhost. 0 bytes sent to external cloud APIs.*\n\n{local_report}"
+            from app.rag.privacy_guard import (
+                check_local_llm,
+                get_last_local_model,
+                redact_pii,
+                stream_local_llm,
+                synthesize_local_airgapped_report,
+            )
+            from app.utils.math_diagram_formatter import format_formulas_and_diagrams
+
+            local_pref = state.get("options", {}).get("local_model")
+            available, provider, selected_local = check_local_llm(preferred_model=local_pref)
+            on_token = getattr(self, "on_token", None) or state.get("on_token") or state.get("options", {}).get("on_token")
+            on_stage = state.get("on_stage")
+
+            # Compact, PII-redacted evidence payload sized so local GPU 4B-9B models evaluate prompt rapidly
+            compact_evidence = []
+            for i, s in enumerate(sources[:7]):
+                snippet_clean = redact_pii((s.get("snippet") or "")[:750]).strip()
+                if snippet_clean:
+                    compact_evidence.append(
+                        f"[{i + 1}] {s.get('title', 'Internal Document')} ({s.get('source_type', 'doc')}):\n{snippet_clean}"
+                    )
+            evidence_block = "\n\n".join(compact_evidence) if compact_evidence else "No local documents matched; answer directly from foundational offline knowledge and clearly note no internal files matched."
+
+            local_system = (
+                "You are an Air-Gapped On-Device Corporate Research Analyst running 100% locally. "
+                "Zero data ever leaves this device. Write a clear, accurate, complete, well-structured Markdown report answering the user's question using the supplied evidence.\n"
+                "Format strictly with these Markdown sections:\n"
+                "## 🎯 Core Concept & Direct Answer (clear definition covering every term asked)\n"
+                "## ⚙️ How It Works & Mathematical Formulation (numbered steps, variable definitions, and clean Unicode/simple formulas like H_out = floor((H + 2P - K)/S) + 1 — avoid raw jammed $$...$$ LaTeX)\n"
+                "## 📊 Evidence & Comparison Matrix (a clean 3-5 row GitHub Markdown table)\n"
+                "## 🔑 Key Takeaways (3-5 concise bullets)\n"
+                "Cite supplied evidence using inline [1], [2] brackets immediately after claims supported by the evidence."
+            )
+            user_mem_ctx = (state.get("user_memory_context") or "").strip()
+            memory_section = f"\n\nPersonalized User Memory (this user's private short-term & long-term context):\n{redact_pii(user_mem_ctx[:900])}" if user_mem_ctx else ""
+            local_prompt = (
+                f"User Question: {redact_pii(query)}\n\n"
+                f"Local Retrieved Evidence Passages:\n{evidence_block}{memory_section}\n\n"
+                "Write the complete, thorough technical answer now (maintaining continuity with this user's remembered context where relevant):"
+            )
+
+            local_report = ""
+            if available:
+                if on_stage:
+                    try:
+                        on_stage("write", f"Streaming locally via {provider} ({selected_local}) · 0 cloud egress...")
+                    except Exception:
+                        pass
+                collected_local = []
+                remaining_privacy = max(15.0, float(state.get("deadline", time.monotonic() + 75.0) - time.monotonic()))
+                for chunk in stream_local_llm(
+                    local_system,
+                    local_prompt,
+                    model=local_pref or selected_local,
+                    max_tokens=1400,
+                    timeout_sec=min(remaining_privacy, 70.0),
+                ):
+                    collected_local.append(chunk)
+                    if on_token is not None:
+                        try:
+                            on_token(chunk)
+                        except Exception:
+                            pass
+                local_report = "".join(collected_local).strip()
+
+            used_model = get_last_local_model() or f"{provider}/{selected_local}"
+            if local_report and len(local_report) > 80:
+                safe_body = redact_pii(local_report)
+                safe_body = format_formulas_and_diagrams(safe_body, query)
+                report = (
+                    f"# 🔒 Executive Summary (Air-Gapped Local LLM: `{used_model}`)\n\n"
+                    f"> 🛡️ **100% Air-Gapped Verified**: Generated on-device via **{used_model}** from local FAISS/BM25 evidence. "
+                    f"External cloud APIs (Gemini, Groq, OpenAI, Web Search) were strictly disabled (0 bytes transmitted).\n\n"
+                    f"{safe_body}\n\n"
+                    f"## 🔒 Privacy & Local Execution Audit\n"
+                    f"* **Inference Engine**: `{used_model}` running on `127.0.0.1`\n"
+                    f"* **Embeddings & Vector Index**: Local `all-MiniLM-L6-v2` + FAISS / BM25Okapi\n"
+                    f"* **External Cloud Egress**: **0 bytes (100% Air-Gapped)**"
+                )
                 origin = "local_llm_private"
+                state["model"] = used_model
             else:
                 report = synthesize_local_airgapped_report(query, docs, confidence=confidence)
+                report = format_formulas_and_diagrams(report, query)
                 origin = "airgapped_local_rag"
+                state["model"] = "in-process-synthesizer"
 
             state["final_report"] = report
             state["sources_cited"] = sources
@@ -345,37 +422,62 @@ Synthesizing evidence for **"{query}"**: the core concepts center on establishin
                 "# 🚀 Strategic Recommendations & Key Takeaways. Cite sources with [1], [2] where applicable."
             )
 
+            research_grounded_style = (
+                "Write a rigorous, comprehensive, evidence-grounded technical research report (650-1000 words MAX — pace your writing so all 4 sections and the closing takeaways finish completely within budget) that directly and completely answers EVERY SINGLE PART of the user's question. "
+                "Follow this exact Markdown hierarchy:\n"
+                "# Main Topic\n"
+                "## 🎯 Core Principles & Direct Answer (concise, direct definitions of every concept in the user prompt, citing [1], [2] where supported by supplied evidence)\n"
+                "## ⚙️ Architectural Mechanisms & Mathematical Formulation (focused pointwise breakdown of every requested architecture, mechanism, operation, equation, and complexity metric with [1], [2])\n"
+                "## 📊 Comparative Matrix & Trade-offs (compact 4-to-6 row Markdown table contrasting the requested mechanisms/architectures)\n"
+                "## 🔑 Key Takeaways (3-5 concise bullet points).\n"
+                "CRITICAL: Cite supplied evidence passages with [1], [2] for facts drawn from them, and seamlessly explain any additional concepts requested by the user (e.g., stride, padding, pooling, ResNet, attention equations) using authoritative foundational knowledge. Keep explanations dense and crisp so all 4 sections finish completely without ever cutting off mid-table or mid-sentence."
+            )
+
             lengths = {
-                "fast": (1200, (
-                    "Provide a fast, highly-structured, explainable answer (around 300-500 words). "
-                    "Directly address all parts of the user question (if asking how to solve problems or algorithms, provide the concrete problem-solving steps or worked walkthrough). "
-                    "Follow this hierarchy: "
+                "fast": (850, (
+                    "Provide a fast, ultra-crisp, highly-structured technical answer (220-340 words TOTAL — keep each section to 2-4 concise bullet points so all 4 sections finish well within 600 tokens). "
+                    "Directly and completely address EVERY part of the user question, including key formulas/complexity metrics. "
+                    "Follow this exact 4-section hierarchy:\n"
                     "# Main Topic\n"
-                    "## 🎯 Core Idea (direct answer in simple, accessible language first)\n"
-                    "## ⚙️ How It Works (numbered mechanism or algorithm steps)\n"
-                    "## 🛠️ Step-by-Step Problem Solving & Worked Walkthrough (walk through a small concrete input or problem)\n"
-                    "## 📊 Comparison Table (Markdown table contrasting options, features, or trade-offs)\n"
-                    "## 🔑 Key Takeaways & Common Mistakes. Cite supplied evidence with [1], [2] where applicable."
+                    "## 🎯 Core Idea & Direct Answer (1-2 crisp sentences per concept citing [1], [2] where evidence applies)\n"
+                    "## ⚙️ How It Works & Mathematical Formulation (compact bullet points with core formulas and complexity citing [1], [2])\n"
+                    "## 📊 Comparison Table (compact 4-row Markdown table)\n"
+                    "## 🔑 Key Takeaways (3 short bullets). Never leave any sub-question unanswered and ALWAYS complete all 4 sections through Key Takeaways."
                 )),
-                "balanced": (2500, (
-                    "Provide an in-depth, example-driven explanation (500-900 words) following the expert teacher standard: "
+                "balanced": (2200, (
+                    "Provide an in-depth, example-driven explanation (550-850 words) following the expert teacher standard: "
                     "1) 🎯 Core Idea & Direct Answer addressing all parts of the user question, "
-                    "2) ⚙️ Step-by-Step Mechanisms & How It Works (numbered steps), "
-                    "3) 🛠️ Problem-Solving Guide & Worked Algorithm Walkthrough (concrete small input, step-by-step changes, pseudocode/formulas with defined variables, complexity O(...)), "
+                    "2) ⚙️ Step-by-Step Mechanisms & How It Works (numbered steps and formulas), "
+                    "3) 🛠️ Concrete Worked Walkthrough (small input, tensor/shape changes, complexity O(...)), "
                     "4) 📊 Comparative Analysis Matrix (GitHub Markdown table), "
-                    "5) ⚠️ Common Misconceptions, Traps & Debugging, "
-                    "6) 🔑 Key Takeaways. Ground all claims with [1], [2] where evidence is available."
+                    "5) 🔑 Key Takeaways. Ground claims with [1], [2] where evidence is available and answer all sub-questions completely."
                 )),
-                "research": (8192, research_technical_style if is_technical_or_deep else research_general_style)
+                "research": (3200 if docs else 3600, research_grounded_style if docs else (research_technical_style if is_technical_or_deep else research_general_style))
             }
             max_tokens, style = lengths.get(mode, lengths["balanced"])
-            policy = ("Use only supplied evidence. If it is insufficient, state what is unknown." if strict or fresh or source_filtered
-                      else "Prefer supplied evidence. Clearly label any supplemental general knowledge; do not attach evidence citations to unsupported supplemental claims.")
-            if not docs:
+            if strict:
+                policy = "Strict Grounding Mode: Use only supplied evidence. Cite every empirical claim with [1], [2] and do not introduce external unverified facts."
+            elif docs:
+                policy = (
+                    "Anchor and cite claims supported by the supplied evidence using bracketed citations [1], [2]. "
+                    "IMPORTANT: Never refuse to answer parts of the user's question that are not in the retrieved snippets — "
+                    "if the user asks a multi-part or broad technical question, seamlessly answer all parts of their question "
+                    "with complete equations and explanations while citing [1], [2] for facts from the supplied evidence."
+                )
+            else:
                 policy = "No retrieved evidence is available. Provide a thoroughly helpful, accurate, well-structured explanation with pointwise details and a comparative table from foundational model knowledge. Do NOT invent fake citations or claim to have retrieved unsupplied documents."
             evidence = [{"id": i + 1, "title": d.get("title"), "text": d["content"][:route.get("per_source_chars", 3500)]} for i, d in enumerate(docs)]
-            prompt = json.dumps({"question": query, "style": style, "grounding_policy": policy,
-                                 "evidence": evidence, "analysis": state.get("analysis", {})}, ensure_ascii=False)
+            prompt_payload = {
+                "question": query,
+                "style": style,
+                "grounding_policy": policy,
+                "evidence": evidence,
+                "analysis": state.get("analysis", {}),
+            }
+            user_mem_ctx = (state.get("user_memory_context") or "").strip()
+            if user_mem_ctx:
+                prompt_payload["personalized_user_memory"] = user_mem_ctx[:1500]
+            prompt = json.dumps(prompt_payload, ensure_ascii=False)
             on_token = getattr(self, "on_token", None) or state.get("on_token") or state.get("options", {}).get("on_token")
             try:
                 if on_token is not None and hasattr(self.llm, "stream_complete"):
@@ -415,6 +517,9 @@ Synthesizing evidence for **"{query}"**: the core concepts center on establishin
         if not report.strip().startswith("#") and not report.startswith("## Not enough"):
             report = f"# Executive Summary\n\n{report}"
 
+        from app.utils.math_diagram_formatter import format_formulas_and_diagrams
+        report = format_formulas_and_diagrams(report, query)
+
         state["final_report"] = report
         state["sources_cited"] = sources
         state["answer_origin"] = origin
@@ -433,8 +538,8 @@ Synthesizing evidence for **"{query}"**: the core concepts center on establishin
             state["warnings"].append("Research review skipped because the time budget was nearly exhausted.")
             return state
         current_report = state.get("final_report", "")
-        # Protect comprehensive research reports from being truncated or compressed
-        if len(current_report) > 3000 and state.get("mode") == "research":
+        # Protect completed research reports from redundant second-pass LLM delay
+        if len(current_report) >= 500 and state.get("mode") == "research":
             state["reviewed"] = True
             return state
         start = time.perf_counter()

@@ -27,11 +27,19 @@ class RetrieverAgent:
         questions = questions[:route.get("max_queries", 1)]
         candidates = list(state.get("retrieved_documents", []))
         actual = list(route.get("actual_retrieval", []))
-        # User-supplied attachments are explicit context; preserve their complete extracted text.
+        # User-supplied attachments are explicit context; sanitize prompt injection & PII before indexing.
+        from app.rag.privacy_guard import redact_pii
+        import re as _re
         for attachment in state.get("attachments", []):
             if filters and attachment["kind"] not in filters:
                 continue
-            candidates.append({"title": attachment["filename"], "content": attachment["text"],
+            raw_att_text = attachment.get("text", "")
+            clean_sentences = [
+                s for s in _re.split(r"(?<=[.!?])\s+", raw_att_text)
+                if not _re.search(r"(system override|ignore (all )?previous instructions|pwned_by_injection|leak admin)", s, _re.I)
+            ]
+            sanitized_att_text = redact_pii(" ".join(clean_sentences))
+            candidates.append({"title": attachment["filename"], "content": sanitized_att_text,
                                "source": "attachment:" + attachment["id"], "source_type": attachment["kind"],
                                "relevance_score": 1.0, "user_supplied": True})
         # Multi-Hop Web Navigation & Live URL Traversal
@@ -99,14 +107,19 @@ class RetrieverAgent:
         else:
             permitted_web = permitted_web and not route.get("private_context", False)
             permitted_web = permitted_web and (not filters or "web" in filters or "wikipedia" in filters or "arxiv" in filters)
-        # TypeSafe AI Jev System One decision: decide if web search is needed
+        # Google gemini-decision-1 decision: decide if web search is needed based on both score and query term coverage
         from app.agents.jev_engine import JEVDecisionEngine
         jev = JEVDecisionEngine()
         max_local_score = max([d.get("relevance_score", 0) for d in relevant_local], default=0.0)
+        q_terms = {t for t in tokens(query) if len(t) >= 4 and t not in {"explain", "depth", "what", "with", "from", "that", "this", "have", "does", "work", "works", "role", "between"}}
+        local_blob = " ".join(f"{d.get('title', '')} {d.get('content', '')}" for d in relevant_local).lower()
+        covered_terms = {t for t in q_terms if t in local_blob}
+        term_coverage = (len(covered_terms) / len(q_terms)) if q_terms else 1.0
+        effective_local_rel = min(max_local_score, term_coverage) if term_coverage < 0.70 else max_local_score
         jev_search_decision = jev.decide_web_search(
             query,
             local_doc_count=len(relevant_local),
-            max_local_relevance=max_local_score,
+            max_local_relevance=effective_local_rel,
             mode=state.get("mode", "balanced"),
             privacy_mode=state.get("privacy_mode", False)
         )
@@ -114,12 +127,16 @@ class RetrieverAgent:
             "need_web_search": jev_search_decision.value,
             "search_probability": jev_search_decision.probability,
             "confidence": jev_search_decision.confidence,
+            "term_coverage": round(term_coverage, 3),
             "latency_ms": jev_search_decision.latency_ms
         }
 
-        should_search = permitted_web and jev_search_decision.value
+        should_search = permitted_web and (jev_search_decision.value or (state.get("mode") != "fast" and term_coverage < 0.70))
         if should_search:
-            search_questions = questions[:2 if state.get("mode") == "research" else 1]
+            search_questions = list(questions[:3 if state.get("mode") == "research" else 1])
+            missing_terms = [t for t in q_terms if t not in covered_terms]
+            if missing_terms and len(search_questions) < 3:
+                search_questions.append(" ".join(missing_terms[:5]))
             remaining = state.get("deadline", float("inf")) - time.monotonic() - 3
             if remaining > 1.0 and search_questions:
                 import concurrent.futures
@@ -155,7 +172,13 @@ class RetrieverAgent:
                 key = fingerprint(document["content"])
                 if key not in unique or document["relevance_score"] > unique[key]["relevance_score"]:
                     unique[key] = document
+        for d in unique.values():
+            if not d.get("user_supplied"):
+                d["relevance_score"] = max(relevance(query, d["content"], d.get("title", "")), 0.85 * float(d.get("dense_score", 0)))
         ordered = sorted(unique.values(), key=lambda d: d["relevance_score"], reverse=True)
+        if ordered and not any(d.get("user_supplied") for d in ordered):
+            best_rel = ordered[0]["relevance_score"]
+            ordered = [d for i, d in enumerate(ordered) if i == 0 or d["relevance_score"] >= 0.65 * best_rel]
         chosen, counts = [], {}
         has_web_nav = any(d.get("source_type") in ("web_traversal", "leetcode_problem") for d in ordered)
         effective_cap = max(top_k, 14 if has_web_nav else top_k)
@@ -170,7 +193,7 @@ class RetrieverAgent:
                 break
         state["retrieved_documents"] = chosen
         state["iteration_count"] = state.get("iteration_count", 0) + 1
-        state["evidence_history"].append(len(chosen))
+        state.setdefault("evidence_history", []).append(len(chosen))
         route["actual_retrieval"] = list(dict.fromkeys(actual))
         state["routing_metadata"] = route
         state["status"] = "retrieved"

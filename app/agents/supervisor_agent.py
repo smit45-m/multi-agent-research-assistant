@@ -64,16 +64,20 @@ class SupervisorAgent:
         # Check if privacy mode is active - preserve air-gapped report intact with zero external touch
         is_privacy = mode == "privacy" or state.get("options", {}).get("privacy_mode", False) or state.get("privacy_mode", False)
         if is_privacy:
+            from app.utils.math_diagram_formatter import format_formulas_and_diagrams
+            formatted_draft = format_formulas_and_diagrams(draft, query)
+            state["final_report"] = formatted_draft
             elapsed_ms = round((time.perf_counter() - start) * 1000, 3)
             state["agent_telemetry"]["supervisor_time_ms"] = elapsed_ms
             state["supervisor_evaluation"] = {
                 "status": "privacy_shield_verified",
-                "has_comparison_table": bool(re.search(r"\|[ \t]*[-:]{3,}[ \t]*\|", draft)),
+                "has_comparison_table": bool(re.search(r"\|[ \t]*[-:]{3,}[ \t]*\|", formatted_draft)),
                 "latency_balance_mode": "privacy",
+                "local_model": state.get("model"),
                 "supervisor_time_ms": elapsed_ms,
                 "jev_decision": "airgapped_verified"
             }
-            state["quality"] = evidence_diagnostics(draft, sources)
+            state["quality"] = evidence_diagnostics(formatted_draft, sources)
             return state
 
         is_fast = mode in ("fast", "quick")
@@ -88,9 +92,9 @@ class SupervisorAgent:
             has_table=has_table,
             has_emojis=has_emojis
         )
-        # In research mode, if draft is already an in-depth report with equations/sections, prioritize immediate approval
+        # In research mode, if draft is already a well-formed report (>=500 chars), approve immediately without a second slow LLM pass
         has_equations = "$$" in draft or "\\frac" in draft or "\\mathbf" in draft
-        if mode == "research" and (len(draft) >= 2000 or (has_table and has_equations)):
+        if mode == "research" and (len(draft) >= 500 or (has_table and has_equations)):
             jev_arbitration["winner_action"] = "accept_and_verify"
 
         should_invoke_llm = (

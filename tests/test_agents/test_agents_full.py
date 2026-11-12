@@ -100,3 +100,53 @@ def test_writer_agent_report_and_accuracy():
     assert res["final_report"].strip().startswith("#")
     assert res["response_accuracy_score"] >= 0.85
     assert len(res["sources_cited"]) > 0
+
+
+def test_gemini_decision_1_engine_and_inter_agent_decisions():
+    from app.agents.jev_engine import GeminiDecisionEngine
+    engine = GeminiDecisionEngine()
+    assert engine.client.model_id == "gemini-decision-1"
+    assert engine.client.is_cloud_enabled is True
+
+    # 1. Pipeline configuration decision
+    fast_plan = engine.optimize_pipeline_config("What is FlashAttention?", mode="fast")
+    assert fast_plan["target_mode"] == "fast"
+    assert "gemini-decision-1" in fast_plan["model_source"]
+    assert fast_plan["jev_decision"].startswith("gemini_decision_1_")
+
+    # 2. Retriever web search gate
+    web_dec = engine.decide_web_search(
+        "Explain FlashAttention SRAM tiling",
+        local_doc_count=2,
+        max_local_relevance=0.85,
+        mode="fast",
+    )
+    assert web_dec.value is False
+    assert web_dec.model_source == "gemini-decision-1"
+
+    # 3. Analyzer evidence sufficiency gate
+    suff_dec = engine.decide_evidence_sufficiency(
+        "Explain FlashAttention SRAM tiling",
+        docs=[{"content": "FlashAttention tiles Q,K,V in SRAM.", "relevance_score": 0.90}],
+        coverage_ratio=1.0,
+        mode="research",
+    )
+    assert suff_dec.value is True
+    assert suff_dec.model_source == "gemini-decision-1"
+
+    # 4. FactChecker grounding verification
+    grounding = engine.verify_grounding(
+        "FlashAttention tiles inputs into SRAM [1].",
+        ["FlashAttention tiles inputs into SRAM blocks."],
+    )
+    assert grounding["grounded_probability"] >= 0.80
+    assert grounding["model_source"] == "gemini-decision-1"
+
+    # 5. Supervisor arbitration
+    sup_dec = engine.evaluate_supervisor_action(
+        draft="# FlashAttention\n- Tiling in SRAM [1]\n| A | B |\n|---|---|\n| 1 | 2 |",
+        mode="fast",
+    )
+    assert sup_dec["winner_action"] == "accept_and_verify"
+    assert sup_dec["model_source"] == "gemini-decision-1"
+

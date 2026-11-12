@@ -107,13 +107,16 @@ class AttachmentStore:
 ATTACHMENTS = AttachmentStore()
 
 
-def understand_media(filename, content, content_type=""):
+def understand_media(filename, content, content_type="", privacy_mode: bool = False):
+    from app.rag.privacy_guard import is_air_gapped, local_vision_ocr
+
     kind, mime = validate_media(filename, content, content_type)
     settings = get_settings()
+    air_gapped = bool(privacy_mode or is_air_gapped())
     text = ""
     
-    # Preferred: Google Gemini Multimodal Vision & Audio
-    if settings.gemini_configured:
+    # Preferred: Google Gemini Multimodal Vision & Audio (strictly skipped in air-gapped privacy mode)
+    if not air_gapped and settings.gemini_configured:
         from app.chains.llm import get_shared_client
         candidate_models = ["gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.5-flash"]
         prompt = (
@@ -155,8 +158,8 @@ def understand_media(filename, content, content_type=""):
             except Exception:
                 continue
 
-    # Fallback: OpenAI / Groq compatible provider
-    if not text.strip():
+    # Fallback: OpenAI / Groq compatible provider (strictly skipped in air-gapped privacy mode)
+    if not air_gapped and not text.strip():
         model = settings.VISION_MODEL_NAME if kind == "image" else settings.AUDIO_MODEL_NAME
         key = settings.MEDIA_API_KEY or (settings.OPENAI_API_KEY if settings.llm_configured else "")
         if model and key:
@@ -176,6 +179,17 @@ def understand_media(filename, content, content_type=""):
                 status = getattr(exc, "status_code", None)
                 if status in {401, 403}:
                     pass
+
+    # Localhost Ollama Vision OCR when running air-gapped
+    if air_gapped and not text.strip() and kind == "image":
+        text = (
+            local_vision_ocr(
+                content,
+                "Describe this uploaded image accurately for research and question answering. "
+                "Transcribe visible text, formulas, UI options, headings, chart labels, and key takeaways."
+            )
+            or ""
+        )
     
     # Offline deterministic fallback
     if not text.strip():
@@ -185,12 +199,12 @@ def understand_media(filename, content, content_type=""):
     return kind, text.strip()
 
 
-def transcribe_audio_query(filename: str, content: bytes) -> str:
+def transcribe_audio_query(filename: str, content: bytes, privacy_mode: bool = False) -> str:
     """
     Transcribes spoken user audio into a research query string.
     Supports .mp3, .wav, .m4a, .ogg, .webm, .flac formats.
     """
-    kind, text = understand_media(filename, content)
+    kind, text = understand_media(filename, content, privacy_mode=privacy_mode)
     if not text or text.startswith("[Audio"):
         # Fallback if audio transcription unavailable
         return f"Research query extracted from audio recording '{filename}'"

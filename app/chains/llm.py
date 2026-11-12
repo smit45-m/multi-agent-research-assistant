@@ -14,7 +14,13 @@ _shared_http_client: httpx.Client = None
 def get_shared_client() -> httpx.Client:
     global _shared_http_client
     if _shared_http_client is None or _shared_http_client.is_closed:
+        transport = httpx.HTTPTransport(
+            local_address="0.0.0.0",
+            retries=1,
+            limits=httpx.Limits(max_keepalive_connections=25, max_connections=60, keepalive_expiry=120.0),
+        )
         _shared_http_client = httpx.Client(
+            transport=transport,
             http2=False,
             timeout=30.0,
             limits=httpx.Limits(max_keepalive_connections=25, max_connections=60, keepalive_expiry=120.0)
@@ -45,13 +51,16 @@ class BoundedLLM:
             raise ModelUnavailable(self.failure)
 
         # STRICT AIR-GAPPED PRIVACY MODE: ZERO EXTERNAL CLOUD CALLS
-        if self.privacy_mode:
-            from app.rag.privacy_guard import call_local_llm
-            local_text = call_local_llm(system, prompt, model=self.model)
+        from app.rag.privacy_guard import is_air_gapped, call_local_llm, get_last_local_model
+        if self.privacy_mode or is_air_gapped():
+            local_text = call_local_llm(system, prompt, model=self.model, max_tokens=max_tokens)
             if local_text:
+                used = get_last_local_model()
+                if used:
+                    self.model = used
                 return local_text
             raise ModelUnavailable(
-                "Air-Gapped Privacy Mode: Local LLM daemon (Ollama/LM Studio) not running. "
+                "Air-Gapped Privacy Mode: Local LLM daemon (Ollama/LM Studio) did not respond. "
                 "Executing deterministic in-process private evidence synthesizer."
             )
 
@@ -82,33 +91,60 @@ class BoundedLLM:
                     with OpenAI(api_key=self.settings.OPENAI_API_KEY, base_url=self.settings.OPENAI_BASE_URL,
                                 timeout=timeout_sec, max_retries=0) as oai_client:
                         kwargs = {"response_format": {"type": "json_object"}} if json_mode else {}
-                        # Dynamic token bounds: 1200 for fast, up to 8192 for deep research
+                        # Dynamic token bounds: qwen3.8-27b has a 1000 OTPM cap, whereas gpt-oss-120b/20b support 4000+ tokens
                         if self.mode in ("fast", "quick"):
-                            actual_tokens = min(max_tokens, 1200)
+                            actual_tokens = max(max_tokens, 850)
+                            base_pool = ["qwen/qwen3.8-27b", "openai/gpt-oss-20b", "openai/gpt-oss-120b", "allam-2-7b"]
                         elif self.mode in ("research", "deep"):
-                            actual_tokens = min(max_tokens, 8192)
+                            actual_tokens = max(max_tokens, 3200)
+                            base_pool = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b", "allam-2-7b"]
                         else:
-                            actual_tokens = min(max_tokens, 2500)
-                        result = oai_client.chat.completions.create(
-                            model=groq_model, temperature=0.1, max_tokens=actual_tokens,
-                            messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}], **kwargs)
+                            actual_tokens = max(max_tokens, 2200)
+                            base_pool = ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "qwen/qwen3.8-27b", "allam-2-7b"]
+                        groq_candidates = [m for m in dict.fromkeys([*base_pool, groq_model]) if "llama-3" not in m]
+                        last_err = None
+                        result = None
+                        used_groq_model = groq_model
+                        for cand_model in groq_candidates:
+                            try:
+                                cand_kwargs = dict(kwargs)
+                                if "qwen" in cand_model:
+                                    cand_kwargs["reasoning_effort"] = "none"
+                                    cand_tokens = min(actual_tokens, 850)
+                                elif "gpt-oss" in cand_model:
+                                    cand_kwargs["reasoning_effort"] = "low"
+                                    cand_tokens = min(actual_tokens, 3600)
+                                else:
+                                    cand_tokens = min(actual_tokens, 2400)
+                                result = oai_client.chat.completions.create(
+                                    model=cand_model, temperature=0.1, max_tokens=cand_tokens,
+                                    messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}], **cand_kwargs)
+                                used_groq_model = cand_model
+                                break
+                            except Exception as cand_err:
+                                last_err = cand_err
+                                if "model_not_found" in str(cand_err) or "404" in str(cand_err) or "429" in str(cand_err):
+                                    continue
+                                raise
+                        if result is None and last_err is not None:
+                            raise last_err
                     res_text = result.choices[0].message.content or ""
                     if result.usage:
                         self.input_tokens += result.usage.prompt_tokens
                         self.output_tokens += result.usage.completion_tokens
-                    self.model = groq_model
+                    self.model = used_groq_model
                     return res_text.strip()
 
                 def _call_gemini(timeout_sec):
                     if self.mode in ("fast", "quick"):
                         output_tokens = min(max_tokens, 1200)
-                        candidates = ["gemini-flash-lite-latest", "gemini-3.5-flash"]
+                        candidates = ["gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.5-flash-lite"]
                     elif self.mode in ("research", "deep"):
                         output_tokens = min(max_tokens, 8192)
-                        candidates = ["gemini-flash-lite-latest", self.model, "gemini-3.5-flash"]
+                        candidates = ["gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.5-flash-lite"]
                     else:
-                        output_tokens = min(max_tokens, 2500)
-                        candidates = [self.model, "gemini-flash-lite-latest", "gemini-3.5-flash"]
+                        output_tokens = min(max_tokens, 3500)
+                        candidates = ["gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.5-flash-lite"]
                     
                     candidate_models = list(dict.fromkeys([m for m in candidates if m]))
                     headers = {
@@ -151,10 +187,10 @@ class BoundedLLM:
                     return ""
 
                 text = ""
-                # Prioritize Groq for ultra-low latency (<1.5s) in Fast Mode or JSON extractions
-                if groq_available and (self.mode in ("fast", "quick") or json_mode):
+                # Fast Groq multi-model pool across all modes (gpt-oss-120b/20b for 2200-token research, qwen3.8-27b for sub-2s fast mode)
+                if groq_available:
                     try:
-                        fast_groq_timeout = min(remaining, 4.0 if self.mode in ("fast", "quick") else 20.0)
+                        fast_groq_timeout = min(remaining, 6.0 if self.mode in ("fast", "quick") else 16.0)
                         text = _call_groq(timeout_sec=fast_groq_timeout)
                     except Exception as e:
                         if "429" in str(e) or "rate_limit" in str(e):
@@ -162,22 +198,13 @@ class BoundedLLM:
                         logger.warning(f"Fast Groq pass skipped ({e}); attempting instant Gemini fallback")
                         text = ""
 
-                # Primary Gemini pass for Research & Balanced synthesis
+                # Gemini fallback pass (using fast gemini-3.5-flash)
                 if not text and gemini_available:
                     try:
-                        gemini_budget = min(remaining, 3.5 if self.mode in ("fast", "quick") else (65.0 if self.mode in ("research", "deep") else 20.0))
+                        gemini_budget = min(remaining, 8.0 if self.mode in ("fast", "quick") else 22.0)
                         text = _call_gemini(timeout_sec=gemini_budget)
                     except Exception as e:
                         logger.warning(f"Gemini call failed: {e}")
-                        text = ""
-
-                # Groq fallback if Gemini failed and Groq wasn't already rate-limited
-                if not text and groq_available and not groq_rate_limited:
-                    try:
-                        groq_budget = min(remaining, 45.0 if self.mode in ("research", "deep") else 15.0)
-                        text = _call_groq(timeout_sec=groq_budget)
-                    except Exception as e:
-                        logger.warning(f"Groq fallback failed: {e}")
                         text = ""
 
             if not isinstance(text, str) or not text.strip():
@@ -201,52 +228,71 @@ class BoundedLLM:
             raise ModelUnavailable(message) from None
 
     def stream_complete(self, system, prompt, max_tokens=2500):
-        """Yields streamed text chunks in real-time from Groq or Gemini."""
-        if self.privacy_mode:
-            text = self.complete(system, prompt, max_tokens)
-            yield text
+        """Yields streamed text chunks in real-time from local LLM (when air-gapped) or Groq/Gemini."""
+        from app.rag.privacy_guard import is_air_gapped, stream_local_llm, get_last_local_model
+        if self.privacy_mode or is_air_gapped():
+            yielded = False
+            for chunk in stream_local_llm(system, prompt, model=self.model, max_tokens=max_tokens):
+                yielded = True
+                yield chunk
+            used = get_last_local_model()
+            if used:
+                self.model = used
+            if not yielded:
+                raise ModelUnavailable(
+                    "Air-Gapped Privacy Mode: Local LLM daemon (Ollama/LM Studio) did not respond."
+                )
             return
 
         groq_available = bool(self.settings.OPENAI_API_KEY and not self.settings.OPENAI_API_KEY.startswith(("your-", "changeme")))
         gemini_available = self.settings.gemini_configured
         groq_model = self.settings.OPENAI_MODEL_NAME or "qwen/qwen3.8-27b"
 
-        # 1. Fast Groq streaming (<1.5s real-time streaming)
-        if groq_available and (self.mode in ("fast", "quick") or not gemini_available):
+        # 1. Fast Groq multi-model streaming (<1.5s TTFT, up to 2200 tokens on gpt-oss-120b/20b)
+        if groq_available:
             try:
                 from openai import OpenAI
-                stream_timeout = min(self.deadline - time.monotonic() if self.deadline else 8.0, 60.0 if self.mode in ("research", "deep") else 8.0)
+                stream_timeout = min(self.deadline - time.monotonic() if self.deadline else 8.0, 18.0 if self.mode in ("research", "deep") else 6.0)
+                if self.mode in ("fast", "quick"):
+                    stream_candidates = ["qwen/qwen3.8-27b", "openai/gpt-oss-20b", "openai/gpt-oss-120b", "allam-2-7b"]
+                else:
+                    stream_candidates = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b", "allam-2-7b"]
                 with OpenAI(api_key=self.settings.OPENAI_API_KEY, base_url=self.settings.OPENAI_BASE_URL,
                             timeout=stream_timeout, max_retries=0) as oai_client:
-                    actual_tokens = min(max_tokens, 1200) if self.mode in ("fast", "quick") else (min(max_tokens, 8192) if self.mode in ("research", "deep") else min(max_tokens, 2500))
-                    response = oai_client.chat.completions.create(
-                        model=groq_model, temperature=0.1, max_tokens=actual_tokens,
-                        messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
-                        stream=True)
-                    streamed_any = False
-                    for chunk in response:
-                        if chunk.choices and chunk.choices[0].delta.content:
-                            text_piece = chunk.choices[0].delta.content
-                            streamed_any = True
-                            self.output_tokens += 1
-                            yield text_piece
-                    if streamed_any:
-                        self.model = groq_model
-                        return
+                    for cand_model in stream_candidates:
+                        try:
+                            extra_kw = {}
+                            if "qwen" in cand_model:
+                                extra_kw["reasoning_effort"] = "none"
+                                cand_tokens = min(max(max_tokens, 800), 850)
+                            elif "gpt-oss" in cand_model:
+                                extra_kw["reasoning_effort"] = "low"
+                                cand_tokens = min(max(max_tokens, 1200 if self.mode in ("fast", "quick") else 3200), 3600)
+                            else:
+                                cand_tokens = min(max(max_tokens, 1000 if self.mode in ("fast", "quick") else 2400), 2400)
+                            response = oai_client.chat.completions.create(
+                                model=cand_model, temperature=0.1, max_tokens=cand_tokens,
+                                messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+                                stream=True, **extra_kw)
+                            streamed_any = False
+                            for chunk in response:
+                                if chunk.choices and chunk.choices[0].delta.content:
+                                    text_piece = chunk.choices[0].delta.content
+                                    streamed_any = True
+                                    self.output_tokens += 1
+                                    yield text_piece
+                            if streamed_any:
+                                self.model = cand_model
+                                self.calls += 1
+                                return
+                        except Exception:
+                            continue
             except Exception as e:
                 logger.warning(f"Groq streaming pass skipped ({e}); falling back to Gemini streaming.")
 
-        # 2. Gemini SSE streaming
+        # 2. Gemini SSE streaming (prioritize fast gemini-3.5-flash)
         if gemini_available:
-            if self.mode in ("fast", "quick"):
-                fast_pool = ["gemini-flash-lite-latest", "gemini-3.5-flash"]
-            elif self.mode in ("research", "deep"):
-                fast_pool = ["gemini-flash-lite-latest", self.model, "gemini-3.5-flash"]
-            else:
-                fast_pool = ["gemini-flash-lite-latest", self.model, "gemini-3.5-flash"]
-
-            candidates = fast_pool + [self.model]
-            candidate_models = list(dict.fromkeys([m for m in candidates if m]))
+            candidate_models = ["gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.5-flash-lite"]
 
             headers = {
                 "Content-Type": "application/json",
@@ -257,12 +303,12 @@ class BoundedLLM:
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {
                     "temperature": 0.2,
-                    "maxOutputTokens": min(max_tokens, 1200) if self.mode in ("fast", "quick") else (min(max_tokens, 8192) if self.mode in ("research", "deep") else max(max_tokens, 2500))
+                    "maxOutputTokens": 2048 if self.mode in ("fast", "quick") else max(max_tokens, 4096)
                 }
             }
             streamed_any = False
             client = get_shared_client()
-            gemini_stream_timeout = 65.0 if self.mode in ("research", "deep") else (20.0 if self.mode == "balanced" else 8.0)
+            gemini_stream_timeout = 25.0 if self.mode in ("research", "deep") else (15.0 if self.mode == "balanced" else 8.0)
             for model_name in candidate_models:
                 try:
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?alt=sse"

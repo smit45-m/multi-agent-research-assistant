@@ -81,6 +81,9 @@ def grounded_sentences(query: str, text: str, limit: int = 4) -> list[str]:
     if not valid_sentences:
         valid_sentences = raw_sentences
 
+    if len(valid_sentences) <= limit and relevance(query, text) > 0:
+        return valid_sentences
+
     ranked = sorted(enumerate(valid_sentences), key=lambda item: relevance(query, item[1]), reverse=True)
     selected = sorted((i, s) for i, s in ranked[:limit] if relevance(query, s) > 0)
     return [s for _, s in selected]

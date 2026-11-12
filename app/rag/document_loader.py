@@ -55,8 +55,10 @@ def _add_metadata(
             doc.metadata.update(extra)
     return documents
 
-def _load_pdf(file_path: Path) -> List[Document]:
+def _load_pdf(file_path: Path, privacy_mode: bool = False) -> List[Document]:
     """Loads a PDF file using high-speed PyMuPDF (fitz) with pypdf and multimodal vision OCR fallbacks."""
+    from app.rag.privacy_guard import is_air_gapped, local_vision_ocr
+    air_gapped = bool(privacy_mode or is_air_gapped())
     docs = []
     # 1. High-speed C/C++ PyMuPDF (fitz) text extraction (~1.2s for 600+ pages)
     try:
@@ -124,7 +126,28 @@ def _load_pdf(file_path: Path) -> List[Document]:
         except Exception as cache_err:
             logger.debug(f"OCR cache lookup error: {cache_err}")
 
-        if settings.gemini_configured:
+        if air_gapped:
+            doc = fitz.open(str(file_path))
+            max_local_pages = min(len(doc), 5)
+            logger.info(f"Air-gapped local vision OCR on up to {max_local_pages} pages of {file_path.name}...")
+            valid_ocr_docs = []
+            for page_idx in range(max_local_pages):
+                try:
+                    pix = doc[page_idx].get_pixmap(dpi=85)
+                    content = local_vision_ocr(
+                        pix.tobytes("jpeg"),
+                        "Transcribe all visible text, headings, equations, and bullet points from this page cleanly."
+                    )
+                    if content:
+                        valid_ocr_docs.append(Document(
+                            page_content=f"## Slide / Page {page_idx + 1}\n\n{content}",
+                            metadata={"page": page_idx + 1, "source": str(file_path), "format": ".pdf"}
+                        ))
+                except Exception as local_ocr_err:
+                    logger.debug(f"Local vision OCR page {page_idx + 1} skipped: {local_ocr_err}")
+            if valid_ocr_docs:
+                return valid_ocr_docs
+        elif settings.gemini_configured:
             doc = fitz.open(str(file_path))
             logger.info(f"PDF {file_path.name} contains no embedded text. Running multimodal Gemini Vision OCR on {len(doc)} pages...")
             
@@ -266,8 +289,10 @@ def _load_text_or_code(file_path: Path) -> List[Document]:
         content = f.read()
     return [Document(page_content=content, metadata={"source": str(file_path)})]
 
-def _load_image(file_path: Path) -> List[Document]:
+def _load_image(file_path: Path, privacy_mode: bool = False) -> List[Document]:
     """Loads image and extracts structured multimodal visual knowledge with disk caching."""
+    from app.rag.privacy_guard import is_air_gapped
+    air_gapped = bool(privacy_mode or is_air_gapped())
     try:
         import hashlib
         ocr_cache_dir = Path("data/ocr_cache")
@@ -284,11 +309,12 @@ def _load_image(file_path: Path) -> List[Document]:
                 metadata={"source": str(file_path), "format": file_path.suffix.lower(), "title": file_path.name, "source_type": "image"}
             )]
         from app.tools.media_input import understand_media
-        kind, text = understand_media(file_path.name, content)
-        try:
-            cache_file.write_text(text, encoding="utf-8")
-        except Exception:
-            pass
+        kind, text = understand_media(file_path.name, content, privacy_mode=air_gapped)
+        if text and not text.startswith(f"[{kind.capitalize()} attachment:"):
+            try:
+                cache_file.write_text(text, encoding="utf-8")
+            except Exception:
+                pass
         return [Document(
             page_content=f"# Image: {file_path.name}\n\n{text}",
             metadata={"source": str(file_path), "format": file_path.suffix.lower(), "title": file_path.name, "source_type": "image"}
@@ -300,13 +326,15 @@ def _load_image(file_path: Path) -> List[Document]:
             metadata={"source": str(file_path), "format": file_path.suffix.lower(), "title": file_path.name, "source_type": "image"}
         )]
 
-def _load_audio(file_path: Path) -> List[Document]:
+def _load_audio(file_path: Path, privacy_mode: bool = False) -> List[Document]:
     """Loads audio file and extracts transcription via multimodal understanding."""
+    from app.rag.privacy_guard import is_air_gapped
+    air_gapped = bool(privacy_mode or is_air_gapped())
     try:
         with open(file_path, "rb") as f:
             content = f.read()
         from app.tools.media_input import understand_media
-        kind, text = understand_media(file_path.name, content)
+        kind, text = understand_media(file_path.name, content, privacy_mode=air_gapped)
         return [Document(
             page_content=f"# Audio Transcription: {file_path.name}\n\n{text}",
             metadata={"source": str(file_path), "format": file_path.suffix.lower(), "title": file_path.name, "source_type": "audio"}
@@ -318,21 +346,24 @@ def _load_audio(file_path: Path) -> List[Document]:
             metadata={"source": str(file_path), "format": file_path.suffix.lower(), "title": file_path.name, "source_type": "audio"}
         )]
 
-def load_document(file_path: Union[str, Path]) -> List[Document]:
+def load_document(file_path: Union[str, Path], privacy_mode: bool = False) -> List[Document]:
     """
     Auto-detects format from file extension and loads multi-format documents.
     Supports 15+ formats including images, audio, JSON, tables, and documents.
     """
+    from app.rag.privacy_guard import is_air_gapped
+    air_gapped = bool(privacy_mode or is_air_gapped())
+
     path_obj = Path(file_path)
     if not path_obj.exists() or not path_obj.is_file():
         raise DocumentProcessingError(f"File not found: {file_path}")
 
     ext = path_obj.suffix.lower()
-    logger.info(f"Loading document {file_path} (detected format: {ext})...")
+    logger.info(f"Loading document {file_path} (detected format: {ext}, air_gapped={air_gapped})...")
 
     try:
         if ext == ".pdf":
-            docs = _load_pdf(path_obj)
+            docs = _load_pdf(path_obj, privacy_mode=air_gapped)
         elif ext in [".docx", ".doc"]:
             docs = _load_docx(path_obj)
         elif ext == ".csv":
@@ -351,9 +382,9 @@ def load_document(file_path: Union[str, Path]) -> List[Document]:
             csv_str = df.to_csv(index=False)
             docs = [Document(page_content=csv_str, metadata={"source": str(file_path)})]
         elif ext in [".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif"]:
-            docs = _load_image(path_obj)
+            docs = _load_image(path_obj, privacy_mode=air_gapped)
         elif ext in [".mp3", ".wav", ".m4a", ".ogg", ".webm", ".flac"]:
-            docs = _load_audio(path_obj)
+            docs = _load_audio(path_obj, privacy_mode=air_gapped)
         else:
             raise DocumentProcessingError(f"Unsupported format: {ext}")
 
@@ -365,6 +396,10 @@ def load_document(file_path: Union[str, Path]) -> List[Document]:
 
 def load_from_url(url: str) -> List[Document]:
     """Fetches and parses a web page URL into structured content."""
+    from app.rag.privacy_guard import is_air_gapped
+    if is_air_gapped():
+        logger.warning(f"Blocked external URL fetch in air-gapped privacy mode: {url}")
+        return []
     import httpx
     from bs4 import BeautifulSoup
     logger.info(f"Loading content from URL: {url}")
@@ -389,6 +424,10 @@ def load_from_url(url: str) -> List[Document]:
 
 def fetch_arxiv_papers(query: str, max_results: int = 3) -> List[Document]:
     """Fetches academic paper abstracts from ArXiv API."""
+    from app.rag.privacy_guard import is_air_gapped
+    if is_air_gapped():
+        logger.info("Blocked external ArXiv fetch in air-gapped privacy mode.")
+        return []
     import httpx
     import xml.etree.ElementTree as ET
     logger.info(f"Fetching academic papers from ArXiv for query: '{query}'")
@@ -426,6 +465,10 @@ def fetch_arxiv_papers(query: str, max_results: int = 3) -> List[Document]:
 
 def fetch_wikipedia_summary(query: str) -> List[Document]:
     """Fetches encyclopedia summary from Wikipedia API."""
+    from app.rag.privacy_guard import is_air_gapped
+    if is_air_gapped():
+        logger.info("Blocked external Wikipedia fetch in air-gapped privacy mode.")
+        return []
     import httpx
     try:
         with httpx.Client(timeout=6.0) as client:

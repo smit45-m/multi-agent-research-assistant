@@ -36,7 +36,7 @@ class ResearchRouter:
     def __init__(self, llm=None):
         self.llm = llm
 
-    def execution_plan(self, query: str, mode="auto", rag_mode="auto", orchestrator="auto", depth=None, max_sources=10, corpus_size=0):
+    def execution_plan(self, query: str, mode="auto", rag_mode="auto", orchestrator="auto", depth=None, max_sources=10, corpus_size=0, precomputed_decision=None, privacy_mode=False):
         """Deterministic budget routing; explicit user choices take priority over heuristics."""
         import re
         from app.config import get_settings
@@ -50,7 +50,7 @@ class ResearchRouter:
         exact = bool(re.search(r'"[^\"]+"|\b[A-Z]{2,}[-_]\d+|\b\w+_\w+\b|\b\w+\.(?:py|js|ts|json)\b', query))
         cognitive = len(re.findall(r"\b(compare|analy[sz]e|evaluate|justify|design|limitations|evidence|causes|implications)\b", lower))
         complexity = "complex" if deep or len(words) > 65 or cognitive >= 3 or query.count("?") >= 3 else "moderate" if compare or len(words) > 12 or cognitive else "simple"
-        selected_mode = {"quick": "fast", "standard": "balanced", "deep": "research"}.get(depth) if mode == "auto" and depth else mode
+        selected_mode = "privacy" if privacy_mode else ({"quick": "fast", "standard": "balanced", "deep": "research"}.get(depth) if mode == "auto" and depth else mode)
         reason = []
         if selected_mode == "auto":
             selected_mode = {"simple": "fast", "moderate": "balanced", "complex": "research"}[complexity]
@@ -91,20 +91,21 @@ class ResearchRouter:
             "fast": 4.8,
             "balanced": settings.BALANCED_BUDGET_SECONDS,
             "research": settings.RESEARCH_BUDGET_SECONDS,
-            "privacy": getattr(settings, "PRIVACY_BUDGET_SECONDS", 10.0),
+            "privacy": getattr(settings, "PRIVACY_BUDGET_SECONDS", 90.0),
         }
         caps = {
             "fast": (3, 1, 1, 600),
             "balanced": (8, 2, 1, 3500),
             "research": (14, 4, 2, 4200),
-            "privacy": (12, 2, 1, 3500),
+            "privacy": (8, 2, 1, 1800),
         }
         sources, queries, rounds, chars = caps.get(selected_mode, caps["balanced"])
         budget_sec = budgets.get(selected_mode, budgets["balanced"])
-        from app.agents.jev_engine import JEVDecisionEngine
-        jev_plan = JEVDecisionEngine().optimize_pipeline_config(
+        from app.agents.jev_engine import GeminiDecisionEngine
+        jev_plan = precomputed_decision or GeminiDecisionEngine().optimize_pipeline_config(
             query=query, mode=selected_mode, depth=depth,
-            rag_mode=selected_rag, orchestrator=engine, corpus_size=corpus_size
+            rag_mode=selected_rag, orchestrator=engine, corpus_size=corpus_size,
+            privacy_mode=(selected_mode == "privacy" or bool(privacy_mode)),
         )
         return {"complexity": complexity, "selected_mode": selected_mode, "selected_rag_mode": selected_rag,
                 "selected_orchestrator": engine, "requested_orchestrator": orchestrator,
@@ -114,7 +115,7 @@ class ResearchRouter:
                 "requires_fresh_evidence": fresh, "private_context": private,
                 "jev_score": jev_plan.get("jev_score", 0.90),
                 "jev_decision": jev_plan.get("jev_decision", ""),
-                "jev_model_source": jev_plan.get("model_source", "typesafe_ai_jev"),
+                "jev_model_source": jev_plan.get("model_source", "gemini-decision-1"),
                 "jev_probabilities": jev_plan.get("decision_probabilities", {}),
                 "warnings": warnings, "stages": [], "actual_retrieval": []}
 

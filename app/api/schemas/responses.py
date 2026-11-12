@@ -50,6 +50,9 @@ class ResearchResponse(BaseModel):
     routing: dict[str, Any] = Field(default_factory=dict)
     quality: dict[str, Any] = Field(default_factory=dict)
     research_plan: dict[str, Any] = Field(default_factory=dict)
+    thread_id: Optional[str] = None
+    chat_id: Optional[str] = None
+    memory_context_used: dict[str, Any] = Field(default_factory=dict)
     telemetry: Optional[AgentTelemetryInfo] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -59,6 +62,9 @@ class DocumentResponse(BaseModel):
     filename: str
     format: str = "document"
     chunk_count: int
+    size_bytes: int = 0
+    qa_count: int = 0
+    qa_links: list[dict[str, Any]] = Field(default_factory=list)
     status: str
     uploaded_at: datetime
 

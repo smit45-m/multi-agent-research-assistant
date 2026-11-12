@@ -7,11 +7,13 @@ import {
   ArrowUpRight,
   Atom,
   BookOpen,
+  Brain,
   Check,
   CheckCheck,
   ChevronDown,
   Clock3,
   Copy,
+  Database,
   FileText,
   GitBranch,
   Globe2,
@@ -29,12 +31,26 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { api, errorMessage, safeUrl } from '../api';
-import type { ResearchResponse, DocumentResponse } from '../types';
+import { api, errorMessage, getAuthHeaders, safeUrl } from '../api';
+import type { ResearchResponse, DocumentResponse, User } from '../types';
 
 type Mode = 'hybrid' | 'agentic' | 'vectorless' | 'hierarchical' | 'multi_query' | 'vector' | 'bm25';
 type Engine = 'auto' | 'langgraph' | 'crewai' | 'direct';
 type SpeedMode = 'fast' | 'research' | 'privacy';
+
+interface LocalModelItem {
+  name: string;
+  provider?: string;
+  size_gb?: number | null;
+  loaded_in_memory?: boolean;
+}
+
+interface LocalModelsPayload {
+  available: boolean;
+  provider?: string | null;
+  recommended_model?: string;
+  models: LocalModelItem[];
+}
 
 const examples = [
   { icon: Layers3, category: 'COMPARE & CONTRAST', title: 'RAG vs. fine-tuning', description: 'Find the right approach for a domain-specific AI assistant.', query: 'Compare retrieval-augmented generation and fine-tuning for a domain-specific AI assistant. Explain trade-offs, cost drivers, and when to use each.', color: 'purple' },
@@ -68,9 +84,30 @@ interface Props {
   resetKey: number;
   onBusyChange: (busy: boolean) => void;
   onOpenLibrary: () => void;
+  threadId?: string | null;
+  onThreadChange?: (threadId: string) => void;
+  currentUser?: User | null;
+  onOpenAuth?: () => void;
+  onAuthExpired?: () => void;
+  onOpenMemory?: () => void;
+  memoryCounts?: { short_term_count: number; long_term_count: number } | null;
 }
 
-export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChange, onOpenLibrary }: Props) {
+export function StudioTab({
+  onShowToast,
+  onResult,
+  result,
+  resetKey,
+  onBusyChange,
+  onOpenLibrary,
+  threadId,
+  onThreadChange,
+  currentUser,
+  onOpenAuth,
+  onAuthExpired,
+  onOpenMemory,
+  memoryCounts,
+}: Props) {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -84,6 +121,9 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [streamingReport, setStreamingReport] = useState('');
   const [stageMessage, setStageMessage] = useState('');
+  const [localModelsInfo, setLocalModelsInfo] = useState<LocalModelsPayload | null>(null);
+  const [selectedLocalModel, setSelectedLocalModel] = useState<string>('auto');
+  const [loadingLocalModels, setLoadingLocalModels] = useState(false);
 
   const controller = useRef<AbortController | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -93,6 +133,24 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
   const lock = useRef(false);
 
   const uploadedDocCache = useRef<Map<string, string>>(new Map());
+
+  const refreshLocalModels = async () => {
+    setLoadingLocalModels(true);
+    try {
+      const info = await api<LocalModelsPayload>('/api/v1/research/local-models');
+      setLocalModelsInfo(info);
+    } catch {
+      setLocalModelsInfo({ available: false, provider: null, models: [] });
+    } finally {
+      setLoadingLocalModels(false);
+    }
+  };
+
+  useEffect(() => {
+    if (speedMode === 'privacy') {
+      void refreshLocalModels();
+    }
+  }, [speedMode]);
 
   useEffect(() => { if (resetKey) textarea.current?.focus(); }, [resetKey]);
   useEffect(() => () => { controller.current?.abort(); if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
@@ -158,6 +216,7 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
           }
           const form = new FormData();
           form.append('file', file);
+          form.append('privacy_mode', String(speedMode === 'privacy'));
           try {
             setStageMessage(`Parsing & indexing attachment: ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)...`);
             const upRes = await api<DocumentResponse>('/api/v1/documents/upload', {
@@ -170,6 +229,9 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
               uploadedAttachmentIds.push(upRes.document_id);
             }
           } catch (uploadErr) {
+            if ((uploadErr as { status?: number })?.status === 401) {
+              throw uploadErr;
+            }
             console.warn(`File upload skipped for ${file.name}:`, uploadErr);
           }
         }
@@ -184,7 +246,7 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
       try {
         const streamRes = await fetch('/api/v1/research/stream', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           signal: abort.signal,
           body: JSON.stringify({
             query: query.trim(),
@@ -192,9 +254,18 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
             rag_mode: ragMode,
             orchestrator: speedMode === 'fast' ? 'direct' : (speedMode === 'privacy' ? 'direct' : engine),
             privacy_mode: speedMode === 'privacy',
+            local_model: speedMode === 'privacy' ? selectedLocalModel : undefined,
             attachment_ids: uploadedAttachmentIds,
+            thread_id: threadId || undefined,
           }),
         });
+
+        if (streamRes.status === 401) {
+          onAuthExpired?.();
+          const authErr = new Error('Your session expired or was signed out. Please sign in again.') as Error & { status?: number };
+          authErr.status = 401;
+          throw authErr;
+        }
 
         if (streamRes.ok && streamRes.body) {
           const reader = streamRes.body.getReader();
@@ -229,6 +300,7 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
         }
       } catch (streamErr) {
         if (abort.signal.aborted) throw streamErr;
+        if ((streamErr as { status?: number })?.status === 401) throw streamErr;
         console.warn('Streaming connection failed, falling back to sync endpoint:', streamErr);
       }
 
@@ -244,7 +316,9 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
             rag_mode: ragMode,
             orchestrator: speedMode === 'fast' ? 'direct' : (speedMode === 'privacy' ? 'direct' : engine),
             privacy_mode: speedMode === 'privacy',
+            local_model: speedMode === 'privacy' ? selectedLocalModel : undefined,
             attachment_ids: uploadedAttachmentIds,
+            thread_id: threadId || undefined,
           }),
         });
       }
@@ -262,6 +336,9 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
 
       setStreamingReport('');
       setStageMessage('');
+      if (data.thread_id) {
+        onThreadChange?.(data.thread_id);
+      }
       onResult(data);
       setTab('report');
       onShowToast('Your research report is ready.');
@@ -274,6 +351,9 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
         });
       }, 50);
     } catch (err) {
+      if ((err as { status?: number })?.status === 401) {
+        onAuthExpired?.();
+      }
       if (abort.signal.aborted && abort.signal.reason !== 'timeout') {
         setStopped(true);
       } else {
@@ -333,6 +413,47 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
 
       <div className="studio-grid">
         <div className="studio-main">
+          <div className={`studio-workspace-bar ${currentUser ? 'private' : 'guest'}`}>
+            {currentUser ? (
+              <>
+                <div className="studio-workspace-info">
+                  <Database size={15} />
+                  <span>
+                    Private DB: <code>{currentUser.db_name || currentUser.id}</code>
+                  </span>
+                  <span className="workspace-sep">·</span>
+                  <Brain size={15} />
+                  <span>
+                    Memory active{memoryCounts ? ` (${memoryCounts.short_term_count} short · ${memoryCounts.long_term_count} long)` : ''}
+                  </span>
+                  {threadId && (
+                    <>
+                      <span className="workspace-sep">·</span>
+                      <span className="thread-pill">Thread {threadId.slice(0, 8)}</span>
+                    </>
+                  )}
+                </div>
+                {onOpenMemory && (
+                  <button type="button" className="text-button" onClick={onOpenMemory}>
+                    Past chats &amp; memory <ArrowUpRight size={13} />
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="studio-workspace-info">
+                  <ShieldCheck size={15} />
+                  <span>Guest mode (temporary) · Sign in to persist private chats, files &amp; short/long-term LLM memory</span>
+                </div>
+                {onOpenAuth && (
+                  <button type="button" className="text-button" onClick={onOpenAuth}>
+                    Sign in <ArrowUpRight size={13} />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+
           <section className="composer panel" aria-labelledby="question-label">
             <div className="composer-header">
               <label id="question-label" htmlFor="research-question">
@@ -375,8 +496,48 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
             {speedMode === 'privacy' && (
               <div className="privacy-security-banner">
                 <ShieldCheck size={16} />
-                <div>
-                  <strong>100% Air-Gapped Corporate Privacy Active:</strong> Cloud APIs (Gemini, Groq, Web Search) are blocked. Queries and documents are processed locally on your machine using local embeddings and offline RAG synthesis.
+                <div className="privacy-banner-body">
+                  <div>
+                    <strong>100% Air-Gapped Corporate Privacy Active:</strong> Cloud APIs (Gemini, Groq, OpenAI, Web Search) are strictly blocked. Confidential files and prompts run on-device (0 bytes leaving localhost).
+                  </div>
+                  <div className="local-llm-picker">
+                    <span className="local-llm-status">
+                      {loadingLocalModels
+                        ? 'Scanning localhost Ollama / LM Studio...'
+                        : localModelsInfo?.available
+                        ? `Local LLM Ready (${localModelsInfo.provider || 'ollama'}):`
+                        : 'No local daemon found (run `ollama serve` or LM Studio; using offline RAG fallback)'}
+                    </span>
+                    {localModelsInfo?.available && (
+                      <select
+                        className="local-llm-select"
+                        aria-label="Local on-device LLM model"
+                        value={selectedLocalModel}
+                        disabled={loading}
+                        onChange={e => setSelectedLocalModel(e.target.value)}
+                      >
+                        <option value="auto">
+                          Auto GPU Optimal ({localModelsInfo.recommended_model || localModelsInfo.models[0]?.name})
+                        </option>
+                        {localModelsInfo.models.map(m => (
+                          <option key={m.name} value={m.name}>
+                            {m.name}
+                            {m.size_gb ? ` (${m.size_gb} GB)` : ''}
+                            {m.loaded_in_memory ? ' • In VRAM' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => void refreshLocalModels()}
+                      disabled={loadingLocalModels || loading}
+                      style={{ fontSize: '11px' }}
+                    >
+                      Refresh
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -483,7 +644,7 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
                   <strong>Your research is underway</strong>
                   <p>
                     {stageMessage || (speedMode === 'privacy'
-                      ? 'Air-Gapped Privacy Mode: Local RAG synthesis underway (0 cloud egress)...'
+                      ? 'Air-Gapped Privacy Mode: On-device local LLM synthesis underway (0 cloud egress)...'
                       : speedMode === 'fast'
                       ? 'Fast mode active: Synthesizing quick response with Gemini Flash...'
                       : 'Deep research active: Multi-agent coordination in progress...')}
@@ -541,9 +702,18 @@ export function StudioTab({ onShowToast, onResult, result, resetKey, onBusyChang
                 <span><Clock3 size={14} /> {result.processing_time_seconds.toFixed(2)}s</span>
                 <span><BookOpen size={14} /> {result.sources?.length || 0} sources returned</span>
                 <span><Zap size={14} /> {result.mode === 'privacy' || speedMode === 'privacy' ? '🔒 Air-Gapped Local Mode' : speedMode === 'fast' ? '⚡ Fast Mode (<5s)' : '🔬 Deep Research'}</span>
-                <span>Engine: {result.mode === 'privacy' || speedMode === 'privacy' ? 'Local RAG (0 Cloud Egress)' : result.orchestrator === 'direct' ? 'Jev System-1 Direct' : result.orchestrator}</span>
+                <span>Engine: {result.mode === 'privacy' || speedMode === 'privacy'
+                  ? (result.model
+                    ? `Local LLM (${result.model}) · 0 Cloud Egress`
+                    : 'Local RAG Fallback (0 Cloud Egress)')
+                  : result.orchestrator === 'direct' ? 'Jev System-1 Direct' : result.orchestrator}</span>
                 {result.response_accuracy_score && (
                   <span>Accuracy: {(result.response_accuracy_score * 100).toFixed(1)}%</span>
+                )}
+                {result.memory_context_used && ((result.memory_context_used.short_term_count || 0) > 0 || (result.memory_context_used.long_term_count || 0) > 0) && (
+                  <span>
+                    <Brain size={13} /> Memory: {result.memory_context_used.short_term_count || 0} short · {result.memory_context_used.long_term_count || 0} long
+                  </span>
                 )}
               </div>
               <div className="result-tabs" role="tablist" aria-label="Research result views">

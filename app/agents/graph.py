@@ -24,17 +24,21 @@ class ResearchGraph:
 
     def should_continue(self, state):
         route = state.get("routing_metadata", {})
-        if state.get("mode") != "research" or state.get("iteration_count", 0) >= route.get("max_retrieval_rounds", 1):
-            return "write"
-        if time.monotonic() > state.get("deadline", 0) - 15:
-            return "write"
-        docs = state.get("retrieved_documents", [])
-        if len(docs) >= 4:
+        if state.get("mode") != "research":
             return "write"
         history = state.get("evidence_history", [])
         if len(history) > 1 and history[-1] <= history[-2]:
             return "write"
-        return "retrieve" if state.get("analysis", {}).get("gaps") else "write"
+        from app.agents.jev_engine import GeminiDecisionEngine
+        remaining = state.get("deadline", 0) - time.monotonic()
+        return GeminiDecisionEngine().decide_continue_retrieval(
+            query=state.get("query", ""),
+            iteration_count=state.get("iteration_count", 0),
+            max_rounds=route.get("max_retrieval_rounds", 1),
+            doc_count=len(state.get("retrieved_documents", [])),
+            gaps=state.get("analysis", {}).get("gaps", []),
+            remaining_budget_s=remaining,
+        )
 
     def build_graph(self, planner=None, retriever=None, analyzer=None, writer=None, fact_checker=None, supervisor=None):
         planner = planner or PlannerAgent(self.llm)
@@ -83,92 +87,118 @@ class ResearchGraph:
 
     def run(self, query, rag_mode="auto", orchestrator="auto", **options):
         started = time.perf_counter()
-        meta_config = MetaAgent().analyze_and_configure(
-            query, mode=options.get("mode", "auto"), depth=options.get("depth"),
-            rag_mode=rag_mode, orchestrator=orchestrator,
-            has_attachments=bool(options.get("attachments") or options.get("attachment_ids"))
-        )
-        effective_rag = rag_mode if rag_mode != "auto" else meta_config["selected_rag_mode"]
-        effective_mode = meta_config["resolved_mode"]
-        if effective_mode in ("fast", "quick") or options.get("mode") in ("fast", "quick"):
-            effective_engine = "direct"
-        elif effective_mode == "privacy" or options.get("privacy_mode"):
-            effective_engine = "direct" if orchestrator == "auto" else orchestrator
-        elif orchestrator != "auto":
-            effective_engine = orchestrator
-        else:
-            effective_engine = meta_config["selected_orchestrator"]
+        from app.rag.privacy_guard import air_gapped_scope, get_last_local_model, set_last_local_model
 
-        route = ResearchRouter().execution_plan(
-            query, mode=effective_mode, rag_mode=effective_rag,
-            orchestrator=effective_engine, depth=options.get("depth"),
-            max_sources=options.get("max_sources", 10), corpus_size=self.vector_store.get_document_count())
-        state = create_initial_state(query, route["selected_rag_mode"], route["selected_orchestrator"], **options)
-        attachment_ids = set(options.get("attachment_ids", []))
-        if attachment_ids:
-            all_docs = self.vector_store.get_all_documents()
-            for d in all_docs:
-                doc_id = str(d.metadata.get("document_id", ""))
-                if doc_id in attachment_ids:
-                    state.setdefault("attachments", []).append({
-                        "id": doc_id,
-                        "filename": d.metadata.get("filename", "attachment"),
-                        "text": d.page_content,
-                        "kind": str(d.metadata.get("format", "document")).lstrip(".")
-                    })
-        state["mode"] = route["selected_mode"]
-        state["orchestrator"] = route["selected_orchestrator"]
-        state["privacy_mode"] = (state["mode"] == "privacy" or options.get("privacy_mode", False))
-        state["offline"] = self.offline or options.get("offline", False)
-        state["deadline"] = time.monotonic() + (15.0 if state["mode"] in ("fast", "quick") else max(90.0, route.get("budget_seconds", 120.0)))
-        state["routing_metadata"] = route
-        state["meta_orchestration"] = meta_config
-        state["warnings"].extend(route["warnings"])
-        store_warnings = getattr(self.vector_store, "warnings", [])
-        if isinstance(store_warnings, list):
-            state["warnings"].extend(store_warnings)
-        on_token = options.get("on_token")
-        on_stage = options.get("on_stage")
-        state["on_token"] = on_token
-        state["on_stage"] = on_stage
+        requested_privacy = bool(options.get("privacy_mode") or options.get("mode") == "privacy")
+        with air_gapped_scope(active=requested_privacy):
+            set_last_local_model(None)
+            meta_config = MetaAgent().analyze_and_configure(
+                query, mode=options.get("mode", "auto"), depth=options.get("depth"),
+                rag_mode=rag_mode, orchestrator=orchestrator,
+                has_attachments=bool(options.get("attachments") or options.get("attachment_ids")),
+                privacy_mode=requested_privacy,
+            )
+            effective_rag = rag_mode if rag_mode != "auto" else meta_config["selected_rag_mode"]
+            effective_mode = "privacy" if requested_privacy else meta_config["resolved_mode"]
+            if effective_mode in ("fast", "quick") or options.get("mode") in ("fast", "quick"):
+                effective_engine = "direct"
+            elif effective_mode == "privacy" or requested_privacy:
+                effective_engine = "direct" if orchestrator == "auto" else orchestrator
+            elif orchestrator != "auto":
+                effective_engine = orchestrator
+            else:
+                effective_engine = meta_config["selected_orchestrator"]
 
-        client = BoundedLLM(state["mode"], state["deadline"], backend=self.llm, disabled=state["offline"], privacy_mode=state["privacy_mode"])
-        planner, analyzer, writer = PlannerAgent(client), AnalyzerAgent(client), WriterAgent(client)
-        writer.on_token = on_token
-        fact_checker = FactCheckerAgent(client)
-        supervisor = SupervisorAgent(client)
-        retriever = RetrieverAgent(self.vector_store, self.search_tool or WebSearchTool(), min_relevance=self.min_relevance)
-        if state["orchestrator"] == "direct":
-            state["sub_questions"] = [query]
-            state["research_plan"] = {"objective": query, "sub_questions": [query], "method": "direct"}
-            if on_stage:
-                on_stage("plan", "Planner Agent decomposing query and intent...")
-            state["routing_metadata"]["stages"].append("retrieve")
-            if on_stage:
-                on_stage("retrieve", "Retriever Agent querying Hybrid RAG and web sources...")
-            state = retriever.retrieve(state)
-            if on_stage:
-                on_stage("analyze", "Analyzer Agent connecting findings & themes...")
-            state = analyzer.analyze(state)
-            state["routing_metadata"]["stages"].append("write")
-            if on_stage:
-                on_stage("write", "Writer Agent synthesizing grounded research report...")
-            state = writer.write(state)
-            state["routing_metadata"]["stages"].append("fact_checker")
-            state = fact_checker.verify(state)
-            state["routing_metadata"]["stages"].append("supervise")
-            if on_stage:
-                on_stage("supervise", "Supervisor Agent verifying citations and trade-offs...")
-            state = supervisor.supervise(state)
-            if state["mode"] == "research" and not state.get("reviewed"):
-                state["routing_metadata"]["stages"].append("review")
-                state = writer.review(state)
-        else:
-            state = self.build_graph(planner, retriever, analyzer, writer, fact_checker, supervisor).invoke(state, {"recursion_limit": 20})
-        state["agent_telemetry"].update({"total_latency_ms": round((time.perf_counter() - started) * 1000, 3),
-                                         "llm_calls": client.calls, "input_tokens": client.input_tokens,
-                                         "output_tokens": client.output_tokens, "retrieval_rounds": state["iteration_count"]})
-        state["warnings"] = list(dict.fromkeys(state["warnings"]))
-        state["model"] = client.model if client.calls else None
-        state["quality"]["research_review_completed"] = state.get("reviewed", False)
-        return state
+            active_vector_store = options.get("user_vector_store") or self.vector_store
+            route = ResearchRouter().execution_plan(
+                query, mode=effective_mode, rag_mode=effective_rag,
+                orchestrator=effective_engine, depth=options.get("depth"),
+                max_sources=options.get("max_sources", 10), corpus_size=active_vector_store.get_document_count(),
+                precomputed_decision=meta_config,
+                privacy_mode=(effective_mode == "privacy" or requested_privacy),
+            )
+            state = create_initial_state(query, route["selected_rag_mode"], route["selected_orchestrator"], **options)
+            attachment_ids = set(options.get("attachment_ids", []))
+            if attachment_ids:
+                all_docs = active_vector_store.get_all_documents()
+                for d in all_docs:
+                    doc_id = str(d.metadata.get("document_id", ""))
+                    if doc_id in attachment_ids:
+                        state.setdefault("attachments", []).append({
+                            "id": doc_id,
+                            "filename": d.metadata.get("filename", "attachment"),
+                            "text": d.page_content,
+                            "kind": str(d.metadata.get("format", "document")).lstrip(".")
+                        })
+            state["mode"] = route["selected_mode"]
+            state["orchestrator"] = route["selected_orchestrator"]
+            state["privacy_mode"] = bool(state["mode"] == "privacy" or requested_privacy)
+            state["offline"] = self.offline or options.get("offline", False)
+            state["deadline"] = time.monotonic() + (15.0 if state["mode"] in ("fast", "quick") else max(90.0, route.get("budget_seconds", 120.0)))
+            state["routing_metadata"] = route
+            state["meta_orchestration"] = meta_config
+            state["warnings"].extend(route["warnings"])
+            store_warnings = getattr(active_vector_store, "warnings", [])
+            if isinstance(store_warnings, list):
+                state["warnings"].extend(store_warnings)
+            on_token = options.get("on_token")
+            on_stage = options.get("on_stage")
+            state["on_token"] = on_token
+            state["on_stage"] = on_stage
+
+            client = BoundedLLM(state["mode"], state["deadline"], backend=self.llm, disabled=state["offline"], privacy_mode=state["privacy_mode"])
+            planner, analyzer, writer = PlannerAgent(client), AnalyzerAgent(client), WriterAgent(client)
+            writer.on_token = on_token
+            fact_checker = FactCheckerAgent(client)
+            supervisor = SupervisorAgent(client)
+            retriever = RetrieverAgent(active_vector_store, self.search_tool or WebSearchTool(), min_relevance=self.min_relevance)
+            if state["orchestrator"] == "direct":
+                if state["privacy_mode"]:
+                    state = planner.plan(state)
+                else:
+                    state["sub_questions"] = [query]
+                    state["research_plan"] = {"objective": query, "sub_questions": [query], "method": "direct"}
+                if on_stage:
+                    on_stage("plan", "Planner Agent decomposing query and intent...")
+                state["routing_metadata"]["stages"].append("retrieve")
+                if on_stage:
+                    on_stage(
+                        "retrieve",
+                        "Retriever Agent querying local Hybrid RAG (0 cloud egress)..." if state["privacy_mode"]
+                        else "Retriever Agent querying Hybrid RAG and web sources...",
+                    )
+                state = retriever.retrieve(state)
+                if on_stage:
+                    on_stage("analyze", "Analyzer Agent connecting findings & themes...")
+                state = analyzer.analyze(state)
+                state["routing_metadata"]["stages"].append("write")
+                if on_stage:
+                    on_stage(
+                        "write",
+                        "Writer Agent streaming via local on-device LLM..." if state["privacy_mode"]
+                        else "Writer Agent synthesizing grounded research report...",
+                    )
+                state = writer.write(state)
+                state["routing_metadata"]["stages"].append("fact_checker")
+                state = fact_checker.verify(state)
+                state["routing_metadata"]["stages"].append("supervise")
+                if on_stage:
+                    on_stage("supervise", "Supervisor Agent verifying citations and trade-offs...")
+                state = supervisor.supervise(state)
+                if state["mode"] == "research" and not state.get("reviewed"):
+                    state["routing_metadata"]["stages"].append("review")
+                    state = writer.review(state)
+            else:
+                state = self.build_graph(planner, retriever, analyzer, writer, fact_checker, supervisor).invoke(state, {"recursion_limit": 20})
+            state["agent_telemetry"].update({
+                "total_latency_ms": round((time.perf_counter() - started) * 1000, 3),
+                "llm_calls": client.calls,
+                "input_tokens": client.input_tokens,
+                "output_tokens": client.output_tokens,
+                "retrieval_rounds": state["iteration_count"],
+            })
+            state["warnings"] = list(dict.fromkeys(state["warnings"]))
+            local_used = get_last_local_model()
+            state["model"] = local_used if state["privacy_mode"] else (client.model if client.calls else None)
+            state["quality"]["research_review_completed"] = state.get("reviewed", False)
+            return state

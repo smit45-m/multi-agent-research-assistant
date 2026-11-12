@@ -36,11 +36,133 @@
         height: 0 !important;
         background: transparent !important;
       }
+      /* Sleek styling for Mathematical Formula Cards, Visual Architecture Diagrams & Markdown Tables */
+      .prose pre {
+        background: linear-gradient(145deg, rgba(17, 24, 39, 0.94), rgba(30, 27, 75, 0.78)) !important;
+        border: 1px solid rgba(129, 140, 248, 0.35) !important;
+        border-left: 4px solid #818cf8 !important;
+        border-radius: 12px !important;
+        padding: 16px 20px !important;
+        margin: 14px 0 !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 0.88rem !important;
+        line-height: 1.55 !important;
+        color: #e0e7ff !important;
+        overflow-x: auto !important;
+        box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.45) !important;
+      }
+      .prose code {
+        font-family: 'JetBrains Mono', monospace !important;
+        color: #c7d2fe !important;
+        background: rgba(99, 102, 241, 0.14) !important;
+        padding: 2px 6px !important;
+        border-radius: 5px !important;
+      }
+      .prose pre code {
+        background: transparent !important;
+        padding: 0 !important;
+        color: inherit !important;
+      }
+      .prose table {
+        display: table !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        border-collapse: collapse !important;
+        table-layout: auto !important;
+        margin: 18px 0 !important;
+        overflow-wrap: normal !important;
+        word-break: normal !important;
+        border: 1px solid rgba(129, 140, 248, 0.25) !important;
+        border-radius: 10px !important;
+      }
+      .prose thead th,
+      .prose th {
+        background: rgba(30, 34, 48, 0.92) !important;
+        color: #e0e7ff !important;
+        font-weight: 600 !important;
+        font-size: 0.84rem !important;
+        padding: 11px 14px !important;
+        border: 1px solid rgba(129, 140, 248, 0.22) !important;
+        white-space: normal !important;
+        overflow-wrap: normal !important;
+        word-break: normal !important;
+        hyphens: none !important;
+        vertical-align: top !important;
+        min-width: 110px !important;
+      }
+      .prose tbody td,
+      .prose td {
+        padding: 11px 14px !important;
+        border: 1px solid rgba(129, 140, 248, 0.16) !important;
+        vertical-align: top !important;
+        overflow-wrap: normal !important;
+        word-break: normal !important;
+        hyphens: none !important;
+        min-width: 120px !important;
+        max-width: 340px !important;
+        line-height: 1.6 !important;
+      }
+      .prose tbody tr:nth-child(even) td {
+        background: rgba(255, 255, 255, 0.02) !important;
+      }
+      .prose th:first-child,
+      .prose td:first-child {
+        min-width: 44px !important;
+        max-width: 90px !important;
+        width: auto !important;
+        white-space: nowrap !important;
+      }
+      .prose td code {
+        display: inline !important;
+        white-space: pre-wrap !important;
+        word-break: normal !important;
+        overflow-wrap: break-word !important;
+        line-height: 1.55 !important;
+      }
+      .prose td pre {
+        margin: 4px 0 !important;
+        padding: 8px 10px !important;
+        white-space: pre-wrap !important;
+        word-break: break-word !important;
+      }
     </style>
-    <script type="module" crossorigin src="/assets/index-BVekq7cv.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-Dq-Pm5fg.css">
+    <script type="module" crossorigin src="/assets/index-CeO2BAHW.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-uSB4aU3K.css">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"></div>
+    <script>
+      // Real-time LaTeX macro cleaner for live streaming tokens inside .prose
+      (function() {
+        function cleanRawLatexInNode(root) {
+          const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+          const nodes = [];
+          while (walker.nextNode()) nodes.push(walker.currentNode);
+          for (const node of nodes) {
+            const v = node.nodeValue;
+            if (!v || (!v.includes('$$') && !v.includes('\\text') && !v.includes('\\frac') && !v.includes('\\mathbf') && !v.includes('\\qquad'))) continue;
+            let s = v
+              .replace(/\$\$\s*[,;]\s*\$\$/g, '\n')
+              .replace(/\$\$/g, '')
+              .replace(/\\\[|\\\]|\\\(|\\\)/g, '')
+              .replace(/\\(?:qquad|quad)/g, '  │  ')
+              .replace(/\\(?:text|mathrm|mathbf|operatorname|mathcal)\s*\{([^{}]*)\}/g, '$1')
+              .replace(/\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g, '($1) / ($2)')
+              .replace(/\\sqrt\s*\{([^{}]+)\}/g, '√($1)')
+              .replace(/\\lfloor/g, '⌊').replace(/\\rfloor/g, '⌋')
+              .replace(/\\sum/g, '∑').replace(/\\in/g, ' ∈ ')
+              .replace(/\\times/g, ' × ').replace(/\\cdot/g, ' · ')
+              .replace(/\\mathbb\{R\}/g, 'ℝ').replace(/\\rightarrow|\\to/g, ' → ');
+            if (s !== v) node.nodeValue = s;
+          }
+        }
+        const obs = new MutationObserver(() => {
+          document.querySelectorAll('.prose').forEach(cleanRawLatexInNode);
+        });
+        window.addEventListener('DOMContentLoaded', () => {
+          obs.observe(document.body, { childList: true, subtree: true, characterData: true });
+        });
+      })();
+    </script>
   </body>
 </html>

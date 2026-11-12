@@ -1,4 +1,14 @@
-import type { TokenResponse, User } from "./types";
+import type {
+  ChatThreadItem,
+  ChatTurnItem,
+  HistoryThreadsPayload,
+  LongTermMemoryItem,
+  SessionItem,
+  TokenResponse,
+  User,
+  UserFilesHistoryPayload,
+  UserMemoryPayload,
+} from "./types";
 
 const TOKEN_STORAGE_KEY = "research_assistant_auth_token";
 
@@ -8,6 +18,11 @@ export function getAuthToken(): string | null {
   } catch {
     return null;
   }
+}
+
+export function getAuthHeaders(): Record<string, string> {
+  const token = getAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 export function setAuthToken(token: string): void {
@@ -65,9 +80,11 @@ export async function api<T>(
               .filter(Boolean)
               .join(". ")
           : "";
-    throw new Error(
+    const err = new Error(
       message || `The server returned ${response.status}. Please try again.`,
-    );
+    ) as Error & { status?: number };
+    err.status = response.status;
+    throw err;
   }
   if (!json)
     throw new Error(
@@ -138,4 +155,92 @@ export async function logoutApi(): Promise<void> {
   } finally {
     clearAuthToken();
   }
+}
+
+export async function logoutAllApi(): Promise<{ message: string; revoked_count: number }> {
+  try {
+    return await api<{ message: string; revoked_count: number }>("/api/v1/auth/logout-all", {
+      method: "POST",
+    });
+  } finally {
+    clearAuthToken();
+  }
+}
+
+export async function fetchSessionsApi(): Promise<SessionItem[]> {
+  return api<SessionItem[]>("/api/v1/auth/sessions");
+}
+
+export async function fetchThreadsApi(
+  search?: string,
+  limit: number = 40,
+): Promise<HistoryThreadsPayload> {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  if (search && search.trim()) params.set("search", search.trim());
+  return api<HistoryThreadsPayload>(`/api/v1/history/threads?${params.toString()}`);
+}
+
+export async function fetchThreadApi(threadId: string): Promise<ChatThreadItem> {
+  return api<ChatThreadItem>(`/api/v1/history/threads/${encodeURIComponent(threadId)}`);
+}
+
+export async function fetchChatApi(chatId: string): Promise<ChatTurnItem> {
+  return api<ChatTurnItem>(`/api/v1/history/chats/${encodeURIComponent(chatId)}`);
+}
+
+export async function deleteThreadApi(
+  threadId: string,
+): Promise<{ status: string; thread_id: string; deleted_turns: number }> {
+  return api<{ status: string; thread_id: string; deleted_turns: number }>(
+    `/api/v1/history/threads/${encodeURIComponent(threadId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function deleteChatApi(
+  chatId: string,
+): Promise<{ status: string; chat_id: string }> {
+  return api<{ status: string; chat_id: string }>(
+    `/api/v1/history/chats/${encodeURIComponent(chatId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function fetchUserFilesWithQaApi(): Promise<UserFilesHistoryPayload> {
+  return api<UserFilesHistoryPayload>("/api/v1/history/files");
+}
+
+export async function fetchMemoryApi(): Promise<UserMemoryPayload> {
+  return api<UserMemoryPayload>("/api/v1/memory/");
+}
+
+export async function pinMemoryApi(
+  title: string,
+  summary: string,
+  kind: "pinned_note" | "user_preference" = "pinned_note",
+): Promise<LongTermMemoryItem> {
+  return api<LongTermMemoryItem>("/api/v1/memory/long-term", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, summary, kind }),
+  });
+}
+
+export async function deleteLongTermMemoryApi(
+  memoryId: string,
+): Promise<{ status: string; memory_id: string }> {
+  return api<{ status: string; memory_id: string }>(
+    `/api/v1/memory/long-term/${encodeURIComponent(memoryId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function clearShortTermMemoryApi(): Promise<{
+  status: string;
+  cleared_count: number;
+}> {
+  return api<{ status: string; cleared_count: number }>("/api/v1/memory/short-term", {
+    method: "DELETE",
+  });
 }

@@ -31,6 +31,13 @@ class ResearchState(TypedDict, total=False):
     model: str | None
     reviewed: bool
     evidence_history: list[int]
+    meta_orchestration: dict
+    jev_retrieval_decision: dict
+    verification_metadata: dict
+    supervisor_evaluation: dict
+    privacy_mode: bool
+    user_memory_context: str
+    user_memory_meta: dict[str, Any]
 
 
 def create_initial_state(query: str, rag_mode="auto", orchestrator="auto", **options) -> ResearchState:
@@ -38,6 +45,8 @@ def create_initial_state(query: str, rag_mode="auto", orchestrator="auto", **opt
         "query": query, "mode": options.get("mode", "auto"), "rag_mode": rag_mode,
         "orchestrator": orchestrator, "options": options,
         "attachments": options.get("attachments", []), "offline": options.get("offline", False),
+        "user_memory_context": options.get("user_memory_context", ""),
+        "user_memory_meta": options.get("user_memory_meta", {}),
         "research_plan": {}, "sub_questions": [], "routing_metadata": {},
         "retrieved_documents": [], "sources_cited": [], "analysis": {}, "final_report": "",
         "confidence_score": 0.0, "response_accuracy_score": 0.875, "synthesis_speedup_ratio": 0.60,

@@ -73,9 +73,16 @@ class FactCheckerAgent:
         
         elapsed_ms = round((time.perf_counter() - start) * 1000, 3)
 
-        # TypeSafe AI Jev System One Grounding Verification (<5ms, zero token hallucination)
+        # TypeSafe AI Jev System One Grounding Verification (<5ms, zero cloud leak in privacy mode)
         from app.agents.jev_engine import JEVDecisionEngine
-        jev_grounding = JEVDecisionEngine().verify_grounding(draft, [s.get("snippet", "") for s in sources])
+        is_privacy = (
+            state.get("mode") == "privacy"
+            or state.get("privacy_mode", False)
+            or state.get("options", {}).get("privacy_mode", False)
+        )
+        jev_grounding = JEVDecisionEngine().verify_grounding(
+            draft, [s.get("snippet", "") for s in sources], privacy_mode=is_privacy
+        )
 
         state["agent_telemetry"]["fact_checker_time_ms"] = elapsed_ms
         state["agent_telemetry"]["total_latency_ms"] = round(state["agent_telemetry"].get("total_latency_ms", 0.0) + elapsed_ms, 3)

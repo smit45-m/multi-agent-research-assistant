@@ -15,6 +15,8 @@ class ResearchQuery(BaseModel):
     web_search: bool = True
     strict_grounding: bool = False
     privacy_mode: bool = False
+    local_model: Optional[str] = None
+    thread_id: Optional[str] = None
     attachment_ids: list[str] = Field(default_factory=list, max_length=3)
 
     @field_validator("query")

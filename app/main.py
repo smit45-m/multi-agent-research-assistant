@@ -24,7 +24,7 @@ from app.utils.exceptions import (
 )
 from app.api.schemas.responses import ErrorResponse
 from app.api.middleware import APIKeyMiddleware, RateLimitMiddleware, RequestIDMiddleware, configure_cors
-from app.api.routes import health, research, documents, auth
+from app.api.routes import health, research, documents, auth, history, memory
 from app.rag.vector_store import VectorStoreManager
 from app.agents.graph import ResearchGraph
 
@@ -104,6 +104,8 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(research.router)
     app.include_router(documents.router)
+    app.include_router(history.router)
+    app.include_router(memory.router)
 
     # Serve static frontend files and SPA assets
     static_dir = Path(__file__).parent / "static"

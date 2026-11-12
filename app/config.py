@@ -47,17 +47,18 @@ class Settings(BaseSettings):
     RETRIEVAL_MIN_RELEVANCE: float = Field(default=0.18, ge=0, le=1)
 
     GEMINI_API_KEY: str = ""
+    GEMINI_DECISION_MODEL: str = "gemini-decision-1"
+    GEMINI_DECISIONS_API_URL: str = "https://generativelanguage.googleapis.com/v1beta/decisions"
     GEMINI_MODEL_NAME: str = "gemini-flash-lite-latest"
     GEMINI_FAST_MODEL: str = "gemini-flash-lite-latest"
-    GEMINI_RESEARCH_MODEL: str = "gemini-3-flash-preview"
+    GEMINI_RESEARCH_MODEL: str = "gemini-3.5-flash"
 
-    # TypeSafe AI Jev & autotrust/JEV-27B (System One AI Decision Model)
-    # Hugging Face: https://huggingface.co/autotrust/JEV-27B
+    # Google Gemini Decision 1 (`gemini-decision-1`) & System-1 Decision Engine
     TYPESAFE_API_KEY: Optional[str] = None
-    TYPESAFE_API_URL: str = "https://api.typesafe.ai/v1/systemone"
+    TYPESAFE_API_URL: str = "https://generativelanguage.googleapis.com/v1beta/decisions"
     HF_TOKEN: Optional[str] = None
     HUGGINGFACE_API_KEY: Optional[str] = None
-    JEV_MODEL_ID: str = "autotrust/JEV-27B"
+    JEV_MODEL_ID: str = "gemini-decision-1"
     JEV_ENDPOINT_URL: Optional[str] = None
     JEV_ENABLED: bool = True
     FAST_MODE_MAX_OUTPUT_TOKENS: int = 500
@@ -65,15 +66,21 @@ class Settings(BaseSettings):
 
     # Local Open-Source LLM & Privacy Configuration (Air-Gapped)
     LOCAL_LLM_URL: str = "http://127.0.0.1:11434"
-    LOCAL_LLM_MODEL: str = "llama3.2"
+    LOCAL_LLM_MODEL: str = "auto"
     LOCAL_OPENAI_URL: str = "http://127.0.0.1:1234/v1"
-    PRIVACY_BUDGET_SECONDS: float = Field(default=30, ge=3, le=120)
+    LOCAL_LLM_NUM_CTX: int = Field(default=4096, ge=1024, le=32768)
+    PRIVACY_BUDGET_SECONDS: float = Field(default=90, ge=5, le=240)
 
-    # Core JWT Authentication & Authorization
+    # Core JWT Authentication & Authorization + Per-User MongoDB Isolation
     JWT_SECRET_KEY: str = "9f8b2c4e1a7d5f0e3b6a9c2d4e8f1a7b5c3e6a9d2f4b7c1e5a8d0f3b6c9e2a5f"
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     AUTH_DB_PATH: str = str(PROJECT_ROOT / "data" / "auth.db")
+    MONGODB_URI: Optional[str] = None
+    MONGODB_AUTH_DB: str = "scholar_auth"
+    MONGODB_REQUIRE_OFFICIAL: bool = False
+    MONGODB_DATA_DIR: str = str(PROJECT_ROOT / "data" / "mongo_dbs")
+    USER_WORKSPACES_DIR: str = str(PROJECT_ROOT / "data" / "user_workspaces")
 
     model_config = SettingsConfigDict(
         env_file=str(PROJECT_ROOT / ".env"), env_file_encoding="utf-8", extra="ignore"
@@ -84,13 +91,17 @@ class Settings(BaseSettings):
         # Allow GROQ_API_KEY from deployment .env files to populate OPENAI_API_KEY automatically
         if not self.OPENAI_API_KEY and self.GROQ_API_KEY:
             self.OPENAI_API_KEY = self.GROQ_API_KEY
-        # Allow DATA_DIR to anchor persistent SQLite auth DB and vector store paths
+        # Allow DATA_DIR to anchor persistent SQLite auth DB, Mongo DBs, and vector store paths
         if self.DATA_DIR:
             data_root = Path(self.DATA_DIR)
             if self.VECTOR_STORE_PATH == str(PROJECT_ROOT / "data" / "vector_store"):
                 self.VECTOR_STORE_PATH = str(data_root / "vector_store")
             if self.AUTH_DB_PATH == str(PROJECT_ROOT / "data" / "auth.db"):
                 self.AUTH_DB_PATH = str(data_root / "auth.db")
+            if self.MONGODB_DATA_DIR == str(PROJECT_ROOT / "data" / "mongo_dbs"):
+                self.MONGODB_DATA_DIR = str(data_root / "mongo_dbs")
+            if self.USER_WORKSPACES_DIR == str(PROJECT_ROOT / "data" / "user_workspaces"):
+                self.USER_WORKSPACES_DIR = str(data_root / "user_workspaces")
         return self
 
     @property

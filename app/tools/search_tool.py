@@ -28,6 +28,11 @@ class WebSearchTool:
         self.last_warning = None
 
     def search(self, query, max_results=5, timeout=None, wikipedia=True):
+        from app.rag.privacy_guard import is_air_gapped
+        if is_air_gapped():
+            self.last_warning = "Air-gapped privacy mode active: external web search is disabled."
+            return []
+
         settings = get_settings()
         budget = timeout if timeout is not None else settings.SEARCH_TIMEOUT_SECONDS
         self.last_warning = None

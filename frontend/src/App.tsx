@@ -7,6 +7,7 @@ import {
   ChevronRight,
   FlaskConical,
   Code2,
+  History,
   Menu,
   Moon,
   Plus,
@@ -19,16 +20,51 @@ import { StudioTab } from "./components/StudioTab";
 import { BenchmarksTab } from "./components/BenchmarksTab";
 import { KnowledgeTab } from "./components/KnowledgeTab";
 import { ConcurrencyTab } from "./components/ConcurrencyTab";
+import { MemoryTab } from "./components/MemoryTab";
 import { AuthModal } from "./components/AuthModal";
-import { api, fetchMeApi, logoutApi, getAuthToken, type HealthInfo } from "./api";
-import type { ResearchResponse, User } from "./types";
+import {
+  api,
+  clearAuthToken,
+  fetchChatApi,
+  fetchMeApi,
+  fetchMemoryApi,
+  fetchThreadsApi,
+  getAuthToken,
+  logoutApi,
+  type HealthInfo,
+} from "./api";
+import type { ChatTurnItem, ResearchResponse, User } from "./types";
 
 const pages = [
   { id: "studio", label: "Research studio", icon: Search },
   { id: "knowledge", label: "Knowledge library", icon: BookOpen },
+  { id: "memory", label: "Memory & chats", icon: History },
   { id: "benchmarks", label: "Benchmarks", icon: FlaskConical },
   { id: "concurrency", label: "System status", icon: Activity },
 ];
+
+function turnToResearchResponse(turn: ChatTurnItem, threadId?: string): ResearchResponse {
+  return {
+    task_id: turn.chat_id,
+    status: "completed",
+    query: turn.query,
+    report: turn.report,
+    sources: turn.sources || [],
+    confidence_score: turn.confidence_score ?? 0.85,
+    response_accuracy_score: turn.response_accuracy_score ?? 0.88,
+    synthesis_speedup_ratio: 1,
+    processing_time_seconds: turn.processing_time_seconds ?? 0,
+    orchestrator: turn.orchestrator || "direct",
+    mode: turn.mode,
+    rag_mode: turn.rag_mode,
+    model: turn.model ?? undefined,
+    answer_origin: turn.answer_origin,
+    thread_id: threadId || turn.thread_id,
+    chat_id: turn.chat_id,
+    memory_context_used: turn.memory_context_used,
+    created_at: turn.created_at,
+  };
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("studio");
@@ -49,6 +85,9 @@ export default function App() {
   const [connection, setConnection] = useState("checking");
   const [history, setHistory] = useState<ResearchResponse[]>([]);
   const [result, setResult] = useState<ResearchResponse | null>(null);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [memorySummary, setMemorySummary] = useState<{ short_term_count: number; long_term_count: number } | null>(null);
+  const [memoryRefreshSignal, setMemoryRefreshSignal] = useState(0);
   const [resetKey, setResetKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -60,14 +99,58 @@ export default function App() {
     toastTimer.current = setTimeout(() => setToast(""), 5000);
   }, []);
 
+  const resetUserSessionState = useCallback(() => {
+    clearAuthToken();
+    setCurrentUser(null);
+    setHistory([]);
+    setResult(null);
+    setActiveThreadId(null);
+    setMemorySummary(null);
+    setResetKey((k) => k + 1);
+    setMemoryRefreshSignal((n) => n + 1);
+  }, []);
+
+  const loadUserWorkspace = useCallback(async () => {
+    if (!getAuthToken()) return;
+    try {
+      const [threadsRes, memRes] = await Promise.all([
+        fetchThreadsApi(undefined, 20),
+        fetchMemoryApi(),
+      ]);
+      const loadedHistory = (threadsRes.threads || [])
+        .map((t) => {
+          const latest = t.turns[t.turns.length - 1];
+          return latest ? turnToResearchResponse(latest, t.thread_id) : null;
+        })
+        .filter((x): x is ResearchResponse => x !== null);
+      setHistory(loadedHistory);
+      setMemorySummary({
+        short_term_count: memRes.short_term_count,
+        long_term_count: memRes.long_term_count,
+      });
+    } catch (err) {
+      if ((err as { status?: number })?.status === 401) {
+        resetUserSessionState();
+      }
+    }
+  }, [resetUserSessionState]);
+
   useEffect(() => {
     const token = getAuthToken();
     if (token) {
       fetchMeApi()
         .then((user) => setCurrentUser(user))
-        .catch(() => setCurrentUser(null));
+        .catch(() => {
+          resetUserSessionState();
+        });
     }
-  }, []);
+  }, [resetUserSessionState]);
+
+  useEffect(() => {
+    if (currentUser) {
+      void loadUserWorkspace();
+    }
+  }, [currentUser, loadUserWorkspace]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -75,9 +158,15 @@ export default function App() {
     } catch {
       // Ignored
     }
-    setCurrentUser(null);
-    notify("Signed out successfully.");
-  }, [notify]);
+    resetUserSessionState();
+    notify("Signed out and cleared local session.");
+  }, [notify, resetUserSessionState]);
+
+  const handleAuthExpired = useCallback(() => {
+    resetUserSessionState();
+    setAuthModalOpen(true);
+    notify("Your session expired or was revoked. Please sign in again.");
+  }, [notify, resetUserSessionState]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -162,18 +251,67 @@ export default function App() {
       return;
     }
     setResult(null);
+    setActiveThreadId(null);
     setResetKey((key) => key + 1);
     navigate("studio");
   }
   function complete(data: ResearchResponse) {
     setResult(data);
+    if (data.thread_id) {
+      setActiveThreadId(data.thread_id);
+    }
     setHistory((items) =>
-      [data, ...items.filter((item) => item.task_id !== data.task_id)].slice(
-        0,
-        8,
-      ),
+      [
+        data,
+        ...items.filter(
+          (item) =>
+            item.task_id !== data.task_id &&
+            (!data.thread_id || item.thread_id !== data.thread_id),
+        ),
+      ].slice(0, 15),
     );
+    if (currentUser) {
+      setMemoryRefreshSignal((n) => n + 1);
+      void fetchMemoryApi()
+        .then((mem) =>
+          setMemorySummary({
+            short_term_count: mem.short_term_count,
+            long_term_count: mem.long_term_count,
+          }),
+        )
+        .catch(() => {});
+    }
   }
+
+  const openChatById = useCallback(
+    async (chatId: string) => {
+      try {
+        const turn = await fetchChatApi(chatId);
+        const mapped = turnToResearchResponse(turn, turn.thread_id);
+        setResult(mapped);
+        setActiveThreadId(turn.thread_id || null);
+        setResetKey((k) => k + 1);
+        navigate("studio");
+      } catch (err) {
+        if ((err as { status?: number })?.status === 401) {
+          handleAuthExpired();
+        } else {
+          notify("Could not open past Q&A from your database.");
+        }
+      }
+    },
+    [handleAuthExpired, notify],
+  );
+
+  const openTurnInStudio = useCallback(
+    (turn: ChatTurnItem, threadId: string) => {
+      setResult(turnToResearchResponse(turn, threadId));
+      setActiveThreadId(threadId);
+      setResetKey((k) => k + 1);
+      navigate("studio");
+    },
+    [],
+  );
 
   return (
     <div className="app-shell">
@@ -245,7 +383,7 @@ export default function App() {
           ))}
         </nav>
         <div className="history-heading">
-          <span className="nav-label">THIS SESSION</span>
+          <span className="nav-label">{currentUser ? "PRIVATE PAST CHATS" : "THIS SESSION"}</span>
           <span className="count">{history.length}</span>
         </div>
         <div className="sidebar-history">
@@ -257,6 +395,7 @@ export default function App() {
                 disabled={busy}
                 onClick={() => {
                   setResult(item);
+                  setActiveThreadId(item.thread_id || null);
                   setResetKey((key) => key + 1);
                   navigate("studio");
                 }}
@@ -302,7 +441,11 @@ export default function App() {
               if (!currentUser) setAuthModalOpen(true);
             }}
             style={{ cursor: currentUser ? "default" : "pointer" }}
-            title={currentUser ? `Signed in as ${currentUser.email}` : "Click to sign in"}
+            title={
+              currentUser
+                ? `Signed in as ${currentUser.email}${currentUser.db_name ? ` (${currentUser.db_name})` : ""}`
+                : "Click to sign in"
+            }
           >
             <span className="profile-avatar">
               {currentUser?.full_name ? currentUser.full_name.charAt(0).toUpperCase() : "R"}
@@ -311,7 +454,7 @@ export default function App() {
               {currentUser?.full_name || "Personal workspace"}
               <small>
                 {currentUser
-                  ? `${currentUser.role.toUpperCase()} • ${currentUser.email}`
+                  ? `${currentUser.db_name ? `${currentUser.db_name} • ` : ""}${currentUser.email}`
                   : "Sign in to save research"}
               </small>
             </div>
@@ -396,16 +539,47 @@ export default function App() {
         <main id="main-content" className="main-content" tabIndex={-1}>
           <div hidden={activeTab !== "studio"}>
             <StudioTab
-              key={resetKey}
+              key={`${currentUser?.id || "guest"}-${resetKey}`}
               onShowToast={notify}
               result={result}
               onResult={complete}
               resetKey={resetKey}
               onBusyChange={setBusy}
               onOpenLibrary={() => navigate("knowledge")}
+              threadId={activeThreadId}
+              onThreadChange={setActiveThreadId}
+              currentUser={currentUser}
+              onOpenAuth={() => setAuthModalOpen(true)}
+              onAuthExpired={handleAuthExpired}
+              onOpenMemory={() => navigate("memory")}
+              memoryCounts={memorySummary}
             />
           </div>
-          {activeTab === "knowledge" && <KnowledgeTab onShowToast={notify} />}
+          {activeTab === "knowledge" && (
+            <KnowledgeTab
+              onShowToast={notify}
+              currentUser={currentUser}
+              onOpenChat={(chatId) => void openChatById(chatId)}
+              onOpenAuth={() => setAuthModalOpen(true)}
+              onWorkspaceChange={() => setMemoryRefreshSignal((n) => n + 1)}
+            />
+          )}
+          {activeTab === "memory" && (
+            <MemoryTab
+              currentUser={currentUser}
+              onShowToast={notify}
+              onOpenAuth={() => setAuthModalOpen(true)}
+              onOpenTurn={openTurnInStudio}
+              onContinueThread={(tid) => {
+                setActiveThreadId(tid);
+                setResult(null);
+                setResetKey((k) => k + 1);
+                navigate("studio");
+              }}
+              onAuthRevokedAll={resetUserSessionState}
+              refreshSignal={memoryRefreshSignal}
+            />
+          )}
           {activeTab === "benchmarks" && <BenchmarksTab onShowToast={notify} />}
           {activeTab === "concurrency" && (
             <ConcurrencyTab
@@ -441,7 +615,13 @@ export default function App() {
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         onSuccess={(user, message) => {
+          setResult(null);
+          setHistory([]);
+          setActiveThreadId(null);
+          setMemorySummary(null);
+          setResetKey((k) => k + 1);
           setCurrentUser(user);
+          setMemoryRefreshSignal((n) => n + 1);
           notify(message);
         }}
       />
