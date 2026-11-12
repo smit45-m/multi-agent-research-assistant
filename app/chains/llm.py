@@ -1,10 +1,20 @@
 """Request-scoped, bounded model calls with truthful failure messages and usage."""
 import json
+import re
 import time
 from app.config import get_settings
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__, "INFO")
+
+_INVISIBLE_CHARS_RE = re.compile(r"[\u200b\u200c\u200d\ufeff]+")
+
+
+def _clean_model_text(text: str) -> str:
+    """Strip zero-width / BOM invisible characters and surrounding whitespace from model outputs."""
+    if not isinstance(text, str):
+        return ""
+    return _INVISIBLE_CHARS_RE.sub("", text).strip()
 
 
 import httpx
@@ -105,6 +115,7 @@ class BoundedLLM:
                         last_err = None
                         result = None
                         used_groq_model = groq_model
+                        res_text = ""
                         for cand_model in groq_candidates:
                             try:
                                 cand_kwargs = dict(kwargs)
@@ -119,6 +130,17 @@ class BoundedLLM:
                                 result = oai_client.chat.completions.create(
                                     model=cand_model, temperature=0.1, max_tokens=cand_tokens,
                                     messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}], **cand_kwargs)
+                                cand_text = _clean_model_text(
+                                    (result.choices[0].message.content or "") if result and result.choices else ""
+                                )
+                                finish_reason = getattr(result.choices[0], "finish_reason", None) if result and result.choices else None
+                                if not cand_text:
+                                    logger.warning(f"Groq model {cand_model} returned empty/invisible text; trying next candidate")
+                                    continue
+                                if finish_reason == "length" and len(cand_text) < 80 and cand_model != groq_candidates[-1]:
+                                    logger.warning(f"Groq model {cand_model} truncated early at {len(cand_text)} chars; trying next candidate")
+                                    continue
+                                res_text = cand_text
                                 used_groq_model = cand_model
                                 break
                             except Exception as cand_err:
@@ -126,59 +148,75 @@ class BoundedLLM:
                                 if "model_not_found" in str(cand_err) or "404" in str(cand_err) or "429" in str(cand_err):
                                     continue
                                 raise
-                        if result is None and last_err is not None:
+                        if not res_text and last_err is not None:
                             raise last_err
-                    res_text = result.choices[0].message.content or ""
-                    if result.usage:
+                    if result and result.usage:
                         self.input_tokens += result.usage.prompt_tokens
                         self.output_tokens += result.usage.completion_tokens
                     self.model = used_groq_model
-                    return res_text.strip()
+                    return res_text
 
                 def _call_gemini(timeout_sec):
                     if self.mode in ("fast", "quick"):
-                        output_tokens = min(max_tokens, 1200)
-                        candidates = ["gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.5-flash-lite"]
+                        output_tokens = max(min(max_tokens, 2400), 1200)
+                        candidates = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.5-flash"]
                     elif self.mode in ("research", "deep"):
-                        output_tokens = min(max_tokens, 8192)
+                        output_tokens = max(min(max_tokens, 8192), 4096)
                         candidates = ["gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.5-flash-lite"]
                     else:
-                        output_tokens = min(max_tokens, 3500)
+                        output_tokens = max(min(max_tokens, 4096), 2400)
                         candidates = ["gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.5-flash-lite"]
-                    
+
                     candidate_models = list(dict.fromkeys([m for m in candidates if m]))
                     headers = {
                         "Content-Type": "application/json",
                         "x-goog-api-key": self.settings.GEMINI_API_KEY
                     }
-                    gen_config = {
-                        "temperature": 0.2,
-                        "maxOutputTokens": output_tokens
-                    }
-                    if json_mode:
-                        gen_config["responseMimeType"] = "application/json"
-                    body = {
-                        "systemInstruction": {"parts": [{"text": system}]},
-                        "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": gen_config
-                    }
                     client = get_shared_client()
                     for model_name in candidate_models:
                         try:
+                            # Thinking models (e.g. gemini-3.5-flash without -lite) charge hidden reasoning tokens
+                            # against maxOutputTokens, so give non-lite models plenty of token headroom to prevent
+                            # mid-sentence cutoffs.
+                            cand_out_tokens = output_tokens
+                            if "3.5-flash" in model_name and "lite" not in model_name:
+                                cand_out_tokens = max(output_tokens, 4096)
+                            gen_config = {
+                                "temperature": 0.2,
+                                "maxOutputTokens": cand_out_tokens,
+                            }
+                            if json_mode:
+                                gen_config["responseMimeType"] = "application/json"
+                            body = {
+                                "systemInstruction": {"parts": [{"text": system}]},
+                                "contents": [{"parts": [{"text": prompt}]}],
+                                "generationConfig": gen_config,
+                            }
                             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
                             resp = client.post(url, headers=headers, json=body, timeout=timeout_sec)
                             if resp.status_code == 200:
                                 data = resp.json()
                                 candidates_list = data.get("candidates", [])
                                 if candidates_list and "content" in candidates_list[0]:
-                                    parts = candidates_list[0]["content"].get("parts", [])
-                                    res_text = "".join(p.get("text", "") for p in parts)
-                                    if res_text.strip():
-                                        usage = data.get("usageMetadata", {})
-                                        self.input_tokens += usage.get("promptTokenCount", 0)
-                                        self.output_tokens += usage.get("candidatesTokenCount", 0)
-                                        self.model = model_name
-                                        return res_text.strip()
+                                    first_cand = candidates_list[0]
+                                    parts = first_cand["content"].get("parts", [])
+                                    res_text = _clean_model_text(
+                                        "".join(p.get("text", "") for p in parts if not p.get("thought"))
+                                    )
+                                    finish_reason = first_cand.get("finishReason")
+                                    if not res_text:
+                                        logger.warning(f"Gemini model {model_name} returned empty/invisible text; continuing")
+                                        continue
+                                    if finish_reason == "MAX_TOKENS" and len(res_text) < 120 and model_name != candidate_models[-1]:
+                                        logger.warning(
+                                            f"Gemini model {model_name} hit MAX_TOKENS with {len(res_text)} chars; trying next candidate"
+                                        )
+                                        continue
+                                    usage = data.get("usageMetadata", {})
+                                    self.input_tokens += usage.get("promptTokenCount", 0)
+                                    self.output_tokens += usage.get("candidatesTokenCount", 0)
+                                    self.model = model_name
+                                    return res_text
                             elif resp.status_code in (429, 503):
                                 logger.warning(f"Model {model_name} returned {resp.status_code}; continuing to next candidate")
                                 continue
@@ -207,9 +245,10 @@ class BoundedLLM:
                         logger.warning(f"Gemini call failed: {e}")
                         text = ""
 
-            if not isinstance(text, str) or not text.strip():
+            text = _clean_model_text(text) if isinstance(text, str) else ""
+            if not text:
                 raise ModelUnavailable("The text model returned an empty answer.")
-            return text.strip()
+            return text
         except ModelUnavailable:
             raise
         except Exception as exc:
@@ -290,27 +329,33 @@ class BoundedLLM:
             except Exception as e:
                 logger.warning(f"Groq streaming pass skipped ({e}); falling back to Gemini streaming.")
 
-        # 2. Gemini SSE streaming (prioritize fast gemini-3.5-flash)
+        # 2. Gemini SSE streaming (prioritize fast non-thinking Flash Lite for fast mode)
         if gemini_available:
-            candidate_models = ["gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.5-flash-lite"]
+            if self.mode in ("fast", "quick"):
+                candidate_models = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.5-flash"]
+            else:
+                candidate_models = ["gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.5-flash-lite"]
 
             headers = {
                 "Content-Type": "application/json",
                 "x-goog-api-key": self.settings.GEMINI_API_KEY
-            }
-            body = {
-                "systemInstruction": {"parts": [{"text": system}]},
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "maxOutputTokens": 2048 if self.mode in ("fast", "quick") else max(max_tokens, 4096)
-                }
             }
             streamed_any = False
             client = get_shared_client()
             gemini_stream_timeout = 25.0 if self.mode in ("research", "deep") else (15.0 if self.mode == "balanced" else 8.0)
             for model_name in candidate_models:
                 try:
+                    stream_max_tokens = 2400 if self.mode in ("fast", "quick") else max(max_tokens, 4096)
+                    if "3.5-flash" in model_name and "lite" not in model_name:
+                        stream_max_tokens = max(stream_max_tokens, 4096)
+                    body = {
+                        "systemInstruction": {"parts": [{"text": system}]},
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {
+                            "temperature": 0.2,
+                            "maxOutputTokens": stream_max_tokens,
+                        }
+                    }
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?alt=sse"
                     with client.stream("POST", url, headers=headers, json=body, timeout=gemini_stream_timeout) as response:
                         if response.status_code == 200:
@@ -320,7 +365,9 @@ class BoundedLLM:
                                         data = json.loads(line[6:])
                                         parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
                                         for p in parts:
-                                            chunk = p.get("text", "")
+                                            if p.get("thought"):
+                                                continue
+                                            chunk = _INVISIBLE_CHARS_RE.sub("", p.get("text", ""))
                                             if chunk:
                                                 streamed_any = True
                                                 yield chunk

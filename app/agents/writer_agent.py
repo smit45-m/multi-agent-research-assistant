@@ -444,7 +444,7 @@ Synthesizing evidence for **"{query}"**: the core concepts center on establishin
             )
 
             lengths = {
-                "fast": (850, (
+                "fast": (1000, (
                     "Provide a fast, ultra-crisp, highly-structured technical answer (220-340 words TOTAL — keep each section to 2-4 concise bullet points so all 4 sections finish well within 600 tokens). "
                     "Directly and completely address EVERY part of the user question, including key formulas/complexity metrics. "
                     "Follow this exact 4-section hierarchy:\n"

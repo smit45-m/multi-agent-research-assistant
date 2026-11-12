@@ -106,7 +106,17 @@ class SupervisorAgent:
         )
 
         elevated = draft
-        if draft.startswith("## Not enough") or state.get("answer_origin") == "insufficient_evidence":
+        preserve_concise_private = (
+            draft.startswith("## Not enough")
+            or state.get("answer_origin") in ("insufficient_evidence", "llm_user_memory")
+            or bool(state.get("route", {}).get("private_context") or state.get("routing_metadata", {}).get("private_context"))
+            or (
+                bool(state.get("user_memory_context"))
+                and is_fast
+                and re.search(r"\b(?:brief|briefly|concise|concisely|recap)\b", query, re.I)
+            )
+        )
+        if preserve_concise_private:
             elevated = draft
         elif should_invoke_llm:
             try:
@@ -203,7 +213,7 @@ class SupervisorAgent:
     def _build_comparison_table(self, query: str, sources: List[Dict[str, Any]]) -> str:
         """Generates a structured comparison table tailored to the query domain."""
         q_lower = query.lower()
-        if any(k in q_lower for k in ("cyber", "security", "threat", "attack", "malware", "phish", "hack", "network")):
+        if re.search(r"\b(?:cyber\w*|security|threats?|attacks?|malware|phish\w*|hack\w*)\b", q_lower):
             return """
 ### 📊 Key Cybersecurity Threat Vectors & Defense Matrix
 
@@ -215,7 +225,7 @@ class SupervisorAgent:
 | **Address Spoofing (ARP Poisoning)** | Poisoning local ARP cache to intercept LAN traffic | Man-in-the-Middle (MitM) eavesdropping, session hijacking | Dynamic ARP Inspection (DAI), static ARP mapping, end-to-end TLS |
 | **Privilege Escalation & Rootkits** | Local/remote backdoors maintaining persistent access | Complete administrative control, hidden surveillance | Secure Boot, kernel integrity monitoring, Perfect Forward Secrecy (PFS) |
 """
-        elif "rag" in q_lower or "retrieval-augmented" in q_lower or "retrieval augmented" in q_lower:
+        elif re.search(r"\b(?:rag|retrieval[- ]augmented)\b", q_lower):
             return """
 ### 📊 Retrieval-Augmented Generation (RAG) Architecture Matrix
 
@@ -227,7 +237,7 @@ class SupervisorAgent:
 | **Explainability** | ❌ Opaque black-box generation | 📑 Basic chunk matching | 🎯 Traceable citations with verified confidence |
 | **Synthesis Speed** | ⏱️ 2–4s (single pass) | ⏱️ 3–6s (embedding + LLM) | ⚡ Sub-5s (Jev System-1 Decision Engine) |
 """
-        elif "hybrid" in q_lower or "search" in q_lower or "retriev" in q_lower:
+        elif re.search(r"\b(?:hybrid|search(?:es|ing)?|retriev(?:al|e|er|ing))\b", q_lower):
             return """
 ### 📊 Architectural Comparison & Trade-off Matrix
 
@@ -264,7 +274,7 @@ class SupervisorAgent:
     def _build_explainability_section(self, query: str, mode: str) -> str:
         """Constructs an explainability and trade-offs breakdown."""
         q_lower = query.lower()
-        if any(k in q_lower for k in ("cyber", "security", "threat", "attack", "malware", "phish", "hack")):
+        if re.search(r"\b(?:cyber\w*|security|threats?|attacks?|malware|phish\w*|hack\w*)\b", q_lower):
             return """
 ---
 
@@ -276,7 +286,7 @@ class SupervisorAgent:
   - *Reactive Capabilities*: Automated incident response, isolated offline backups, and continuous logging enable rapid containment if a breach succeeds.
 - **🛡️ Defense in Depth**: No single security tool guarantees 100% protection; resilience relies on layered defenses across network, endpoint, and identity perimeters.
 """
-        elif any(k in q_lower for k in ("rag", "retriev", "search", "vector", "ai")):
+        elif re.search(r"\b(?:rag|retriev(?:al|e|er|ing)|search(?:es|ing)?|vectors?|ai)\b", q_lower):
             return """
 ---
 

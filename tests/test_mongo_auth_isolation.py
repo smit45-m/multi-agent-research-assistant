@@ -580,3 +580,89 @@ def test_research_mode_with_standard_word_not_hijacked_by_nda_substring():
         privacy_mode=False,
     )
     assert cfg_nda["resolved_mode"] == "privacy"
+
+
+def test_supervisor_does_not_inject_hybrid_rag_for_researcher_or_memory_queries():
+    from app.agents.state import create_initial_state
+    from app.agents.supervisor_agent import SupervisorAgent
+
+    sup = SupervisorAgent(llm=None)
+    state = create_initial_state(
+        "I am a quantum cryogenics researcher. Briefly recap what I researched earlier about my cryo target.",
+        rag_mode="hybrid",
+        orchestrator="langgraph",
+        user_memory_context="Remembered Facts:\n- CryoPulse target: 850 mW @ 4K",
+    )
+    state["mode"] = "fast"
+    state["answer_origin"] = "llm_user_memory"
+    state["final_report"] = "- **CryoPulse Target**: 850 mW @ 4K (`cryo.pdf`)."
+    state["offline"] = True
+
+    out = sup.supervise(state)
+    assert "Hybrid RAG" not in out["final_report"]
+    assert "CryoPulse Target" in out["final_report"]
+
+    # Direct comparison table builder also respects word boundaries ('researcher' != 'search')
+    table = sup._build_comparison_table("I am a researcher discussing cryo cooling", [])
+    assert "Hybrid RAG" not in table
+
+
+def test_bounded_llm_strips_zero_width_and_skips_truncated_thinking_stub(monkeypatch):
+    import time
+    from app.chains.llm import BoundedLLM, _clean_model_text
+    from app.config import get_settings
+
+    assert _clean_model_text("\u200b \ufeff\n ") == ""
+
+    calls = []
+
+    class FakeResp:
+        def __init__(self, status_code, payload):
+            self.status_code = status_code
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    class FakeClient:
+        def post(self, url, headers=None, json=None, timeout=None):
+            calls.append(url)
+            if "gemini-flash-lite-latest" in url:
+                # Simulate an invisible \u200b placeholder that must be skipped
+                return FakeResp(200, {
+                    "candidates": [{
+                        "finishReason": "STOP",
+                        "content": {"parts": [{"text": "\u200b"}]},
+                    }]
+                })
+            if "gemini-3.5-flash-lite" in url:
+                return FakeResp(200, {
+                    "candidates": [{
+                        "finishReason": "MAX_TOKENS",
+                        "content": {"parts": [{"text": "Your SPIFFE/SPIRE X.5"}]},
+                    }]
+                })
+            return FakeResp(200, {
+                "candidates": [{
+                    "finishReason": "STOP",
+                    "content": {"parts": [
+                        {"text": "internal thought", "thought": True},
+                        {"text": "- **SPIFFE/SPIRE SVID**: Zero-trust mTLS identity with 12-hour X.509 rotation and OPA enforcement."},
+                    ]},
+                }],
+                "usageMetadata": {"promptTokenCount": 20, "candidatesTokenCount": 25},
+            })
+
+    import app.chains.llm as llm_mod
+    monkeypatch.setattr(llm_mod, "get_shared_client", lambda: FakeClient())
+    settings = get_settings().model_copy(update={
+        "OPENAI_API_KEY": "",
+        "GEMINI_API_KEY": "test-gemini-key",
+    })
+    monkeypatch.setattr(llm_mod, "get_settings", lambda: settings)
+
+    llm = BoundedLLM(mode="fast", deadline=time.monotonic() + 10.0)
+    out = llm.complete("system", "prompt", max_tokens=1000)
+    assert "internal thought" not in out
+    assert "SPIFFE/SPIRE SVID" in out
+    assert len(calls) == 3

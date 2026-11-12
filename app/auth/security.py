@@ -22,10 +22,11 @@ def create_access_token(
     db_name: str = "",
     user_agent: str = "",
     expires_delta: Optional[timedelta] = None,
+    auth_db: Optional[AuthDatabase] = None,
 ) -> Tuple[str, int]:
     """Generates a signed JWT access token bound to a persistent `jti` session and user DB."""
     settings = get_settings()
-    auth_db = get_auth_db()
+    auth_db = auth_db or get_auth_db()
     if not db_name:
         user_rec = auth_db.get_user_by_id(user_id)
         if user_rec:
@@ -67,7 +68,12 @@ def create_access_token(
     return token, expires_seconds
 
 
-def decode_access_token(token: str, *, verify_session: bool = True) -> Dict[str, Any]:
+def decode_access_token(
+    token: str,
+    *,
+    verify_session: bool = True,
+    auth_db: Optional[AuthDatabase] = None,
+) -> Dict[str, Any]:
     """Decodes and validates JWT signature, expiration, token type, and stateful session status."""
     settings = get_settings()
     try:
@@ -98,7 +104,8 @@ def decode_access_token(token: str, *, verify_session: bool = True) -> Dict[str,
 
     if verify_session:
         jti = payload.get("jti", "")
-        if not jti or not get_auth_db().is_session_active(jti, payload["sub"]):
+        session_db = auth_db or get_auth_db()
+        if not jti or not session_db.is_session_active(jti, payload["sub"]):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Session has been signed out or revoked. Please sign in again.",
