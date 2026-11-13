@@ -327,6 +327,7 @@ class UserWorkspaceRepository:
                 r
                 for r in rows
                 if needle in (r.get("query") or "").lower()
+                or needle in (r.get("report") or "").lower()
                 or needle in (r.get("report_summary") or "").lower()
                 or any(needle in str(fn).lower() for fn in (r.get("attachment_names") or []))
             ]
@@ -393,7 +394,12 @@ class UserWorkspaceRepository:
                 for t in threads
                 if needle in (t.get("title") or "").lower()
                 or needle in (t.get("latest_summary") or "").lower()
-                or any(needle in (turn.get("query") or "").lower() for turn in t.get("turns", []))
+                or any(needle in str(fn).lower() for fn in (t.get("file_names") or []))
+                or any(
+                    needle in (turn.get("query") or "").lower()
+                    or needle in (turn.get("report") or "").lower()
+                    for turn in t.get("turns", [])
+                )
             ]
         threads.sort(key=lambda t: t.get("updated_at") or "", reverse=True)
         return threads[: max(1, min(limit, 100))]
