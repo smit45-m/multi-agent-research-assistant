@@ -75,11 +75,12 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "9f8b2c4e1a7d5f0e3b6a9c2d4e8f1a7b5c3e6a9d2f4b7c1e5a8d0f3b6c9e2a5f"
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
-    AUTH_DB_PATH: str = str(PROJECT_ROOT / "data" / "auth.db")
     MONGODB_URI: Optional[str] = None
     MONGODB_AUTH_DB: str = "scholar_auth"
-    MONGODB_REQUIRE_OFFICIAL: bool = False
-    MONGODB_DATA_DIR: str = str(PROJECT_ROOT / "data" / "mongo_dbs")
+    # Atlas Vector Search: one shared collection + one index (free M0 clusters allow 3 search indexes)
+    MONGODB_VECTOR_DB: str = "scholar_vectors"
+    MONGODB_VECTOR_INDEX: str = "chunk_vector_index"
+    # Legacy on-disk per-user vector stores, auto-imported into Atlas once and then renamed
     USER_WORKSPACES_DIR: str = str(PROJECT_ROOT / "data" / "user_workspaces")
 
     model_config = SettingsConfigDict(
@@ -91,15 +92,11 @@ class Settings(BaseSettings):
         # Allow GROQ_API_KEY from deployment .env files to populate OPENAI_API_KEY automatically
         if not self.OPENAI_API_KEY and self.GROQ_API_KEY:
             self.OPENAI_API_KEY = self.GROQ_API_KEY
-        # Allow DATA_DIR to anchor persistent SQLite auth DB, Mongo DBs, and vector store paths
+        # Allow DATA_DIR to anchor the shared vector store and legacy workspace paths
         if self.DATA_DIR:
             data_root = Path(self.DATA_DIR)
             if self.VECTOR_STORE_PATH == str(PROJECT_ROOT / "data" / "vector_store"):
                 self.VECTOR_STORE_PATH = str(data_root / "vector_store")
-            if self.AUTH_DB_PATH == str(PROJECT_ROOT / "data" / "auth.db"):
-                self.AUTH_DB_PATH = str(data_root / "auth.db")
-            if self.MONGODB_DATA_DIR == str(PROJECT_ROOT / "data" / "mongo_dbs"):
-                self.MONGODB_DATA_DIR = str(data_root / "mongo_dbs")
             if self.USER_WORKSPACES_DIR == str(PROJECT_ROOT / "data" / "user_workspaces"):
                 self.USER_WORKSPACES_DIR = str(data_root / "user_workspaces")
         return self

@@ -2,7 +2,10 @@ import pytest
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*renamed to.*")
 
+import math
 from unittest.mock import MagicMock, patch
+
+import mongomock
 from starlette.testclient import TestClient
 
 from app.main import create_app
@@ -17,16 +20,40 @@ def mock_search_tool():
         ]
         yield mock_s
 
+@pytest.fixture(autouse=True)
+def fake_atlas_vector_search(monkeypatch):
+    """Unit tests never reach Atlas: simulate `$vectorSearch` with brute-force cosine over the mongomock collection.
+
+    The real `$vectorSearch` pipeline is covered by `test_atlas_vector_search_pipeline_is_owner_filtered`
+    and by the live post-deploy verification against the official Atlas cluster.
+    """
+    from app.rag.atlas_vector_store import AtlasVectorStore
+
+    def _noop_index(self):
+        return None
+
+    def _brute_force_search(self, query_vector, k):
+        qn = math.sqrt(sum(x * x for x in query_vector)) or 1.0
+        scored = []
+        for row in self.vectors.find({"owner_db": self.db_name}):
+            vec = row["embedding"]
+            vn = math.sqrt(sum(x * x for x in vec)) or 1.0
+            cosine = sum(a * b for a, b in zip(query_vector, vec)) / (qn * vn)
+            scored.append((str(row["_id"]), (1.0 + cosine) / 2.0))  # Atlas cosine score
+        scored.sort(key=lambda pair: pair[1], reverse=True)
+        return scored[:k]
+
+    monkeypatch.setattr(AtlasVectorStore, "_ensure_vector_index", _noop_index)
+    monkeypatch.setattr(AtlasVectorStore, "_vector_search", _brute_force_search)
+
+
 @pytest.fixture
 def mock_settings(tmp_path):
     return Settings(
         OPENAI_API_KEY="sk-test-key",
         LOG_LEVEL="INFO",
         MONGODB_URI="",
-        MONGODB_REQUIRE_OFFICIAL=False,
-        MONGODB_DATA_DIR=str(tmp_path / "mongo_test"),
         USER_WORKSPACES_DIR=str(tmp_path / "user_workspaces"),
-        AUTH_DB_PATH=str(tmp_path / "no_legacy_auth.db"),
     )
 
 @pytest.fixture
@@ -46,17 +73,12 @@ def test_client(mock_settings, mock_vector_store, monkeypatch):
     from app.db.mongo_engine import reset_mongo_manager
     from app.db.user_repository import clear_cached_user_vector_stores
     monkeypatch.setenv("MONGODB_URI", "")
-    monkeypatch.setenv("MONGODB_REQUIRE_OFFICIAL", "false")
-    reset_mongo_manager(
-        mongodb_uri="",
-        data_dir=mock_settings.MONGODB_DATA_DIR,
-        require_official=False,
-    )
+    reset_mongo_manager(client=mongomock.MongoClient())
     clear_cached_user_vector_stores()
     with patch("app.config.get_settings", return_value=mock_settings), \
          patch("app.main.get_settings", return_value=mock_settings), \
          patch("app.db.mongo_engine.get_settings", return_value=mock_settings), \
-         patch("app.db.user_repository.get_settings", return_value=mock_settings), \
+         patch("app.rag.atlas_vector_store.get_settings", return_value=mock_settings), \
          patch("app.main.vector_store", mock_vector_store):
         app = create_app()
         app.state.vector_store = mock_vector_store

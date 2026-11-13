@@ -1083,24 +1083,25 @@ def evaluate_product_subsystems() -> Dict[str, Any]:
         and "leetcode.com/problems/lru-cache" in prioritized[0],
     }
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        from app.db.mongo_engine import MultiTenantMongoManager
-        iso_mgr = MultiTenantMongoManager(mongodb_uri="", data_dir=tmp_dir, require_official=False)
-        db = AuthDatabase(db_path=str(Path(tmp_dir) / "no_legacy.db"), manager=iso_mgr)
-        unique_suffix = str(int(time.time() * 1000))
-        u1 = db.create_user(f"alice.{unique_suffix}@example.com", "StrongPass!123", "Alice")
-        u2 = db.create_user(f"bob.{unique_suffix}@example.com", "StrongPass!456", "Bob")
-        tok1, _ = create_access_token(user_id=u1["id"], email=u1["email"], role=u1["role"], full_name=u1["full_name"], auth_db=db)
-        tok2, _ = create_access_token(user_id=u2["id"], email=u2["email"], role=u2["role"], full_name=u2["full_name"], auth_db=db)
-        dec1 = decode_access_token(tok1, auth_db=db)
-        dec2 = decode_access_token(tok2, auth_db=db)
-        db.record_activity(u1["id"], "query", "FlashAttention SRAM tiling")
-        db.record_activity(u2["id"], "query", "Solid state battery electrolytes")
-        auth_checks = {
-            "jwt_registration_succeeded": bool(u1.get("id") and u2.get("id")),
-            "jwt_signature_and_sub_verified": dec1.get("sub") == u1["id"] and dec2.get("sub") == u2["id"],
-            "per_user_identity_isolated": dec1.get("sub") != dec2["sub"] and dec1.get("email") != dec2.get("email"),
-        }
+    import mongomock  # dev-only in-memory MongoDB double; keeps offline evals off production Atlas
+    from app.db.mongo_engine import MultiTenantMongoManager
+
+    iso_mgr = MultiTenantMongoManager(client=mongomock.MongoClient())
+    db = AuthDatabase(manager=iso_mgr)
+    unique_suffix = str(int(time.time() * 1000))
+    u1 = db.create_user(f"alice.{unique_suffix}@example.com", "StrongPass!123", "Alice")
+    u2 = db.create_user(f"bob.{unique_suffix}@example.com", "StrongPass!456", "Bob")
+    tok1, _ = create_access_token(user_id=u1["id"], email=u1["email"], role=u1["role"], full_name=u1["full_name"], auth_db=db)
+    tok2, _ = create_access_token(user_id=u2["id"], email=u2["email"], role=u2["role"], full_name=u2["full_name"], auth_db=db)
+    dec1 = decode_access_token(tok1, auth_db=db)
+    dec2 = decode_access_token(tok2, auth_db=db)
+    db.record_activity(u1["id"], "query", "FlashAttention SRAM tiling")
+    db.record_activity(u2["id"], "query", "Solid state battery electrolytes")
+    auth_checks = {
+        "jwt_registration_succeeded": bool(u1.get("id") and u2.get("id")),
+        "jwt_signature_and_sub_verified": dec1.get("sub") == u1["id"] and dec2.get("sub") == u2["id"],
+        "per_user_identity_isolated": dec1.get("sub") != dec2["sub"] and dec1.get("email") != dec2.get("email"),
+    }
 
     return {
         "meta_agent_jev_routing": {

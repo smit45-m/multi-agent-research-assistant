@@ -2,20 +2,16 @@
 
 Stores user accounts, active/revoked JWT sessions (`jti`), and auth audit events in the
 `scholar_auth` database while provisioning a dedicated private MongoDB database per user.
-Automatically migrates legacy SQLite accounts (`data/auth.db`) once on first boot.
 """
 from __future__ import annotations
 
-import sqlite3
 import threading
 import uuid
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import bcrypt
 
-from app.config import get_settings
 from app.db.mongo_engine import get_mongo_manager, make_user_db_name
 from app.utils.logger import setup_logger
 
@@ -31,10 +27,9 @@ _INITIALIZED_AUTH_CLIENTS: set[tuple[int, str]] = set()
 class AuthDatabase:
     """Thread-safe MongoDB manager for user records, roles, sessions, and per-user DB mapping."""
 
-    def __init__(self, db_path: Optional[str] = None, manager: Any = None):
+    def __init__(self, manager: Any = None):
         self._lock = threading.RLock()
         self._custom_manager = manager
-        self.legacy_sqlite_path = Path(db_path or get_settings().AUTH_DB_PATH)
         self._init_db()
 
     @property
@@ -67,9 +62,7 @@ class AuthDatabase:
             self._audit.create_index("user_id")
 
             if self._users.count_documents({}) == 0:
-                migrated = self._migrate_from_legacy_sqlite()
-                if not migrated:
-                    self._seed_demo_admin()
+                self._seed_demo_admin()
             else:
                 # Ensure every existing user has an isolated private MongoDB database provisioned
                 for user in list(self._users.find({})):
@@ -78,42 +71,6 @@ class AuthDatabase:
                         self._users.update_one({"id": user["id"]}, {"$set": {"db_name": db_name}})
                         self._manager.provision_user_db(db_name)
             _INITIALIZED_AUTH_CLIENTS.add(client_key)
-
-    def _migrate_from_legacy_sqlite(self) -> bool:
-        if not self.legacy_sqlite_path.exists():
-            return False
-        try:
-            conn = sqlite3.connect(str(self.legacy_sqlite_path))
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT * FROM users").fetchall()
-            conn.close()
-            if not rows:
-                return False
-            for r in rows:
-                rd = dict(r)
-                uid = rd["id"]
-                db_name = make_user_db_name(uid, rd["email"])
-                doc = {
-                    "_id": uid,
-                    "id": uid,
-                    "email": rd["email"].strip().lower(),
-                    "full_name": rd["full_name"],
-                    "password_hash": rd["password_hash"],
-                    "role": "admin" if str(rd.get("role", "user")).lower() == "admin" else "user",
-                    "db_name": db_name,
-                    "is_active": bool(rd.get("is_active", 1)),
-                    "failed_attempts": 0,
-                    "locked_until": None,
-                    "created_at": rd["created_at"],
-                    "last_login": rd.get("last_login"),
-                }
-                self._users.insert_one(doc)
-                self._manager.provision_user_db(db_name)
-            logger.info(f"Migrated {len(rows)} user account(s) from legacy SQLite into per-user MongoDB.")
-            return True
-        except Exception as exc:
-            logger.warning(f"Legacy SQLite auth migration skipped: {exc}")
-            return False
 
     def _seed_demo_admin(self) -> None:
         admin_id = str(uuid.uuid4())

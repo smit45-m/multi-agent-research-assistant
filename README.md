@@ -290,8 +290,8 @@ Total AWS Monthly Cost: ~$3.95 – $4.10 / month (Budget: Strictly <$5.00/mo)
 - **Decision Engine**: TypeSafe AI Jev System One Client & `autotrust/JEV-27B`
 - **Agent Orchestration**: LangGraph (StateGraph workflows) and CrewAI compatibility facade
 - **LLM Integrations**: Google Gemini (Flash Lite, 3.5 Flash), Groq (LLaMA 3.3 70B, 3.1 8B), Local LLaMA 3.2
-- **Vector & RAG**: FAISS (`IndexFlatIP`), BM25 (`rank-bm25`), `sentence-transformers` (`all-MiniLM-L6-v2`)
-- **Authentication**: SQLite (`data/auth.db`) with JWT HS256 tokens
+- **Vector & RAG**: MongoDB Atlas Vector Search (`$vectorSearch` on `scholar_vectors.chunk_vectors` with per-user `<db_name>.chunks` isolation), BM25 (`rank-bm25`), `sentence-transformers` (`all-MiniLM-L6-v2`)
+- **Authentication & Multi-Tenancy**: Official MongoDB Atlas (`scholar_auth` + isolated per-user `scholar_u_*` databases) with JWT HS256 tokens
 
 ### DevOps & Infrastructure
 - **Containers**: Multi-stage Docker builds

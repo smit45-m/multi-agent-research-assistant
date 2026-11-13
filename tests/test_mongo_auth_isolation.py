@@ -4,38 +4,34 @@ short-term & long-term memory persistence, file-to-Q&A provenance, and faithful 
 from __future__ import annotations
 
 import json
-import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List
 
-import bcrypt
+import mongomock
 import pytest
 from fastapi.testclient import TestClient
 
 from app.agents.graph import ResearchGraph
 from app.api.routes import documents as documents_routes
 from app.api.routes import research as research_routes
-from app.auth.database import AuthDatabase
 from app.config import get_settings
 from app.db.mongo_engine import get_mongo_manager, reset_mongo_manager
 from app.db.user_memory import UserMemoryService
 from app.db.user_repository import UserWorkspaceRepository, clear_cached_user_vector_stores
 from app.main import create_app
+from app.rag.atlas_vector_store import AtlasVectorStore
+
+_REAL_VECTOR_SEARCH = AtlasVectorStore._vector_search
 
 
 @pytest.fixture()
 def isolated_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Provides completely isolated embedded MongoDB directories, user vector stores, and FastAPI app."""
-    mongo_dir = tmp_path / "mongo_dbs"
+    """Provides an in-memory MongoDB double (mongomock), isolated vector stores, and a FastAPI app."""
     workspaces_dir = tmp_path / "user_workspaces"
-    legacy_auth = tmp_path / "no_legacy_auth.db"
 
     settings = get_settings()
     monkeypatch.setattr(settings, "MONGODB_URI", None, raising=False)
-    monkeypatch.setattr(settings, "MONGODB_REQUIRE_OFFICIAL", False, raising=False)
-    monkeypatch.setattr(settings, "MONGODB_DATA_DIR", str(mongo_dir), raising=False)
     monkeypatch.setattr(settings, "USER_WORKSPACES_DIR", str(workspaces_dir), raising=False)
-    monkeypatch.setattr(settings, "AUTH_DB_PATH", str(legacy_auth), raising=False)
 
     clear_cached_user_vector_stores()
     documents_routes.DOCUMENTS.clear()
@@ -44,12 +40,13 @@ def isolated_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     with research_routes._SYNTHESIS_CACHE_LOCK:
         research_routes._SYNTHESIS_CACHE.clear()
 
-    reset_mongo_manager(mongodb_uri="", data_dir=mongo_dir, require_official=False)
+    mongo_client = mongomock.MongoClient()
+    reset_mongo_manager(client=mongo_client)
     app = create_app()
     with TestClient(app) as client:
         yield {
             "client": client,
-            "mongo_dir": mongo_dir,
+            "mongo_client": mongo_client,
             "workspaces_dir": workspaces_dir,
             "tmp_path": tmp_path,
         }
@@ -76,8 +73,7 @@ def _login(client: TestClient, email: str, password: str):
 
 def test_separate_per_user_databases_and_vector_stores(isolated_env):
     client: TestClient = isolated_env["client"]
-    mongo_dir: Path = isolated_env["mongo_dir"]
-    workspaces_dir: Path = isolated_env["workspaces_dir"]
+    mongo_client = isolated_env["mongo_client"]
 
     r_alice = _signup(client, "alice@example.com", "AlicePass#1", "Alice Researcher")
     r_bob = _signup(client, "bob@example.com", "BobPass#1", "Bob Analyst")
@@ -93,8 +89,8 @@ def test_separate_per_user_databases_and_vector_stores(isolated_env):
     assert alice_db.startswith("scholar_u_")
     assert bob_db.startswith("scholar_u_")
     assert alice_db != bob_db
-    assert (mongo_dir / alice_db).is_dir()
-    assert (mongo_dir / bob_db).is_dir()
+    assert alice_db in mongo_client.list_database_names() or mongo_client[alice_db].list_collection_names()
+    assert bob_db in mongo_client.list_database_names() or mongo_client[bob_db].list_collection_names()
 
     mgr = get_mongo_manager()
     user_dbs = mgr.list_user_databases()
@@ -102,15 +98,18 @@ def test_separate_per_user_databases_and_vector_stores(isolated_env):
     assert bob_db in user_dbs
     assert mgr.auth_db_name not in user_dbs
 
-    # Uploading a file for Alice initializes ONLY Alice's isolated vector store directory
+    # Uploading a file for Alice stores chunks ONLY in Alice's own MongoDB database
     up_res = client.post(
         "/api/v1/documents/upload",
         headers={"Authorization": f"Bearer {alice['access_token']}"},
         files={"file": ("alice_notes.txt", b"Private lattice cryptography notes for Alice.", "text/plain")},
     )
     assert up_res.status_code == 200
-    assert (workspaces_dir / alice_db / "vector_store").exists()
-    assert not (workspaces_dir / bob_db / "vector_store").exists()
+    assert mongo_client[alice_db]["chunks"].count_documents({}) >= 1
+    assert mongo_client[bob_db]["chunks"].count_documents({}) == 0
+    # Embeddings live in the shared vector collection but are tagged with their owner database
+    owners = {row["owner_db"] for row in mongo_client[mgr.vector_db_name]["chunk_vectors"].find({})}
+    assert owners <= {alice_db}
 
 
 def test_faithful_auth_privilege_escalation_rbac_and_lockout(isolated_env):
@@ -197,7 +196,7 @@ def test_stateful_jwt_revocation_and_strict_bearer_rejection(isolated_env):
 
 def test_isolation_file_qa_links_and_short_long_term_memory_across_restart(isolated_env, monkeypatch):
     client: TestClient = isolated_env["client"]
-    mongo_dir: Path = isolated_env["mongo_dir"]
+    mongo_client = isolated_env["mongo_client"]
 
     alice = _signup(client, "alice2@example.com", "AlicePass#1", "Alice Researcher").json()
     bob = _signup(client, "bob2@example.com", "BobPass#1", "Bob Analyst").json()
@@ -312,13 +311,13 @@ def test_isolation_file_qa_links_and_short_long_term_memory_across_restart(isola
     )
     assert res_bob.status_code == 200
     assert recorded_graph_calls[2]["user_memory_context"] == ""
-    assert len(recorded_graph_calls[2]["user_vector_store"]._documents) == 0
+    assert recorded_graph_calls[2]["user_vector_store"].get_document_count() == 0
 
-    # Simulate complete server restart: wipe in-memory caches and reload Mongo manager from disk
+    # Simulate complete server restart: wipe in-memory caches and reconnect to the same MongoDB server
     clear_cached_user_vector_stores()
     research_routes.TASKS.clear()
     research_routes.TASK_OWNERS.clear()
-    reset_mongo_manager(mongodb_uri="", data_dir=mongo_dir, require_official=False)
+    reset_mongo_manager(client=mongo_client)
     fresh_app = create_app()
     with TestClient(fresh_app) as client2:
         alice_login = _login(client2, "alice2@example.com", "AlicePass#1")
@@ -389,9 +388,8 @@ def test_streaming_endpoint_persists_chats_and_memory(isolated_env, monkeypatch)
     assert chats["chats"][0]["query"] == "Stream test query"
 
 
-def test_pinned_memory_controls_and_legacy_sqlite_migration(isolated_env, monkeypatch):
+def test_pinned_memory_controls(isolated_env):
     client: TestClient = isolated_env["client"]
-    tmp_path: Path = isolated_env["tmp_path"]
 
     eve = _signup(client, "eve@example.com", "EvePass#1", "Eve").json()
     eve_hdr = {"Authorization": f"Bearer {eve['access_token']}"}
@@ -409,52 +407,115 @@ def test_pinned_memory_controls_and_legacy_sqlite_migration(isolated_env, monkey
     assert client.delete(f"/api/v1/memory/long-term/{mem_id}", headers=eve_hdr).status_code == 200
     assert client.delete("/api/v1/memory/short-term", headers=eve_hdr).status_code == 200
 
-    # Verify one-time automatic migration from a legacy SQLite auth.db into fresh Mongo scholar_auth DB
-    legacy_db = tmp_path / "legacy_auth.db"
-    conn = sqlite3.connect(str(legacy_db))
-    conn.execute(
-        """
-        CREATE TABLE users (
-            id TEXT PRIMARY KEY, email TEXT UNIQUE, full_name TEXT,
-            password_hash TEXT, role TEXT, is_active INTEGER, created_at TEXT, last_login TEXT
-        )
-        """
-    )
-    pw_hash = bcrypt.hashpw(b"Legacy#123", bcrypt.gensalt()).decode("utf-8")
-    conn.execute(
-        "INSERT INTO users VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        ("leg-1", "legacy@example.com", "Legacy User", pw_hash, "user", 1, "2026-01-01T00:00:00Z", None),
-    )
-    conn.commit()
-    conn.close()
 
-    mongo_mig_dir = tmp_path / "mongo_migrated"
-    settings = get_settings()
-    monkeypatch.setattr(settings, "AUTH_DB_PATH", str(legacy_db), raising=False)
-    reset_mongo_manager(mongodb_uri="", data_dir=mongo_mig_dir, require_official=False)
-    migrated_auth_db = AuthDatabase(str(legacy_db))
-    migrated_user = migrated_auth_db.get_user_by_email("legacy@example.com")
-    assert migrated_user is not None
-    assert migrated_user["db_name"].startswith("scholar_u_")
-    assert len(migrated_user["db_name"]) <= 36
-
-
-def test_official_mongo_mode_refuses_silent_custom_fallback(tmp_path: Path, monkeypatch):
+def test_manager_never_falls_back_to_a_hand_written_store(monkeypatch):
+    from app.db import mongo_engine
     from app.db.mongo_engine import MultiTenantMongoManager
 
     settings = get_settings()
     monkeypatch.setattr(settings, "MONGODB_URI", None, raising=False)
-    monkeypatch.setattr(settings, "MONGODB_REQUIRE_OFFICIAL", True, raising=False)
 
-    with pytest.raises(RuntimeError, match="MONGODB_REQUIRE_OFFICIAL"):
-        MultiTenantMongoManager(mongodb_uri="", data_dir=tmp_path / "m1", require_official=True)
+    with pytest.raises(RuntimeError, match="MONGODB_URI is not configured"):
+        MultiTenantMongoManager(mongodb_uri="")
 
-    with pytest.raises(RuntimeError, match="Refusing silent local fallback"):
-        MultiTenantMongoManager(
-            mongodb_uri="mongodb://127.0.0.1:59999/?serverSelectionTimeoutMS=250",
-            data_dir=tmp_path / "m2",
-            require_official=True,
-        )
+    with pytest.raises(RuntimeError, match="Failed to connect to MongoDB server"):
+        MultiTenantMongoManager(mongodb_uri="mongodb://127.0.0.1:59999/?serverSelectionTimeoutMS=250")
+
+    # The removed embedded engine must stay gone
+    assert not hasattr(mongo_engine, "LocalMongoClient")
+    assert not hasattr(mongo_engine, "LocalMongoCollection")
+
+
+def test_auth_database_has_no_sqlite_path():
+    from app.auth import database as auth_database
+
+    assert not hasattr(auth_database, "sqlite3")
+    assert not hasattr(get_settings(), "AUTH_DB_PATH")
+    assert not hasattr(get_settings(), "MONGODB_DATA_DIR")
+
+
+def test_atlas_vector_store_isolation_delete_and_legacy_import(isolated_env):
+    from langchain_core.documents import Document
+    from app.rag.atlas_vector_store import AtlasVectorStore
+
+    mgr = get_mongo_manager()
+    mgr.provision_user_db("scholar_u_vec_alice")
+    mgr.provision_user_db("scholar_u_vec_bob")
+
+    class FakeEmbeddings:
+        def embed_documents(self, texts):
+            return [self.embed_query(t) for t in texts]
+
+        def embed_query(self, text):
+            low = text.lower()
+            return [1.0 if "lattice" in low else 0.0, 1.0 if "mesh" in low else 0.0, 0.1]
+
+    alice = AtlasVectorStore("scholar_u_vec_alice", embeddings=FakeEmbeddings())
+    bob = AtlasVectorStore("scholar_u_vec_bob", embeddings=FakeEmbeddings())
+    for store in (alice, bob):
+        store.initialize()
+        assert store.prepare_dense() is True and store.dense_available
+
+    ids = alice.add_documents([
+        Document(page_content="lattice cryptography notes", metadata={"document_id": "doc-a", "filename": "a.txt"}),
+        Document(page_content="mesh networking notes", metadata={"document_id": "doc-b", "filename": "b.txt"}),
+    ])
+    bob.add_documents([Document(page_content="lattice secrets of bob", metadata={"document_id": "doc-bob"})])
+    assert len(ids) == 2
+    assert alice.get_document_count() == 2 and bob.get_document_count() == 1
+
+    hits = alice.similarity_search("lattice", k=5, score_threshold=0.5)
+    assert hits and hits[0].page_content == "lattice cryptography notes"
+    assert all("bob" not in h.page_content for h in hits)  # strict owner isolation
+    assert {d.metadata["document_id"] for d in alice.get_all_documents()} == {"doc-a", "doc-b"}
+
+    assert alice.delete_by_document_id("doc-a") == 1
+    assert alice.get_document_count() == 1
+    assert not any("lattice cryptography" in h.page_content for h in alice.similarity_search("lattice", k=5, score_threshold=0.0))
+    assert bob.get_document_count() == 1  # untouched
+
+    # One-time import of a pre-Atlas on-disk workspace into MongoDB
+    legacy_dir = Path(get_settings().USER_WORKSPACES_DIR) / "scholar_u_vec_carol" / "vector_store"
+    legacy_dir.mkdir(parents=True)
+    (legacy_dir / "documents.json").write_text(
+        json.dumps([{"id": "old-1", "content": "legacy mesh chunk", "metadata": {"document_id": "doc-old"}}]),
+        encoding="utf-8",
+    )
+    mgr.provision_user_db("scholar_u_vec_carol")
+    carol = AtlasVectorStore("scholar_u_vec_carol", embeddings=FakeEmbeddings())
+    carol.initialize()
+    assert carol.get_document_count() == 1
+    assert (legacy_dir / "documents.json.migrated").exists() and not (legacy_dir / "documents.json").exists()
+
+
+def test_atlas_vector_search_pipeline_is_owner_filtered():
+    from app.rag.atlas_vector_store import AtlasVectorStore
+
+    captured = {}
+
+    class SpyCollection:
+        def aggregate(self, pipeline):
+            captured["pipeline"] = pipeline
+            return iter([{"_id": "c1", "score": 0.9}])
+
+    class SpyVectorDb:
+        def __getitem__(self, name):
+            return SpyCollection()
+
+    class SpyManager:
+        vector_db = SpyVectorDb()
+        vector_db_name = "scholar_vectors"
+        client = object()
+
+    store = AtlasVectorStore("scholar_u_spy_user", embeddings=object(), manager=SpyManager())
+    hits = _REAL_VECTOR_SEARCH(store, [0.1, 0.2, 0.3], 4)
+    assert hits == [("c1", 0.9)]
+    stage = captured["pipeline"][0]["$vectorSearch"]
+    assert stage["index"] == store.index_name
+    assert stage["path"] == "embedding"
+    assert stage["limit"] == 4 and stage["numCandidates"] >= 100
+    assert stage["filter"] == {"owner_db": "scholar_u_spy_user"}
+    assert captured["pipeline"][1]["$project"]["score"] == {"$meta": "vectorSearchScore"}
 
 
 def test_writer_uses_private_user_memory_instead_of_abstaining():

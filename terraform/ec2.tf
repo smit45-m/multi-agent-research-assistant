@@ -67,7 +67,6 @@ locals {
               JWT_SECRET_KEY=${var.jwt_secret_key}
               DATA_DIR=/app/data
               VECTOR_STORE_PATH=/app/data/vector_store
-              AUTH_DB_PATH=/app/data/auth.db
               ENVFILE
               chmod 600 /opt/app/.env
 
