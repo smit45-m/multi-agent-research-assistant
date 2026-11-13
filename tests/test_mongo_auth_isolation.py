@@ -19,9 +19,7 @@ from app.db.mongo_engine import get_mongo_manager, reset_mongo_manager
 from app.db.user_memory import UserMemoryService
 from app.db.user_repository import UserWorkspaceRepository, clear_cached_user_vector_stores
 from app.main import create_app
-from app.rag.atlas_vector_store import AtlasVectorStore
-
-_REAL_VECTOR_SEARCH = AtlasVectorStore._vector_search
+from app.rag.vector_store import VectorStoreManager
 
 
 @pytest.fixture()
@@ -74,6 +72,7 @@ def _login(client: TestClient, email: str, password: str):
 def test_separate_per_user_databases_and_vector_stores(isolated_env):
     client: TestClient = isolated_env["client"]
     mongo_client = isolated_env["mongo_client"]
+    workspaces_dir: Path = isolated_env["workspaces_dir"]
 
     r_alice = _signup(client, "alice@example.com", "AlicePass#1", "Alice Researcher")
     r_bob = _signup(client, "bob@example.com", "BobPass#1", "Bob Analyst")
@@ -98,18 +97,17 @@ def test_separate_per_user_databases_and_vector_stores(isolated_env):
     assert bob_db in user_dbs
     assert mgr.auth_db_name not in user_dbs
 
-    # Uploading a file for Alice stores chunks ONLY in Alice's own MongoDB database
+    # Uploading a file for Alice stores metadata in Alice's MongoDB DB and vectors ONLY in Alice's FAISS workspace
     up_res = client.post(
         "/api/v1/documents/upload",
         headers={"Authorization": f"Bearer {alice['access_token']}"},
         files={"file": ("alice_notes.txt", b"Private lattice cryptography notes for Alice.", "text/plain")},
     )
     assert up_res.status_code == 200
-    assert mongo_client[alice_db]["chunks"].count_documents({}) >= 1
-    assert mongo_client[bob_db]["chunks"].count_documents({}) == 0
-    # Embeddings live in the shared vector collection but are tagged with their owner database
-    owners = {row["owner_db"] for row in mongo_client[mgr.vector_db_name]["chunk_vectors"].find({})}
-    assert owners <= {alice_db}
+    assert (workspaces_dir / alice_db / "vector_store").exists()
+    assert not (workspaces_dir / bob_db / "vector_store").exists()
+    assert mongo_client[alice_db]["files"].count_documents({}) >= 1
+    assert mongo_client[bob_db]["files"].count_documents({}) == 0
 
 
 def test_faithful_auth_privilege_escalation_rbac_and_lockout(isolated_env):
@@ -434,88 +432,77 @@ def test_auth_database_has_no_sqlite_path():
     assert not hasattr(get_settings(), "MONGODB_DATA_DIR")
 
 
-def test_atlas_vector_store_isolation_delete_and_legacy_import(isolated_env):
+def test_per_user_faiss_isolation_and_delete_rebuild_immediately(isolated_env):
     from langchain_core.documents import Document
-    from app.rag.atlas_vector_store import AtlasVectorStore
+    from langchain_core.embeddings import Embeddings
 
-    mgr = get_mongo_manager()
-    mgr.provision_user_db("scholar_u_vec_alice")
-    mgr.provision_user_db("scholar_u_vec_bob")
+    workspaces_dir: Path = isolated_env["workspaces_dir"]
 
-    class FakeEmbeddings:
+    class FakeEmbeddings(Embeddings):
         def embed_documents(self, texts):
             return [self.embed_query(t) for t in texts]
 
         def embed_query(self, text):
             low = text.lower()
-            return [1.0 if "lattice" in low else 0.0, 1.0 if "mesh" in low else 0.0, 0.1]
+            return [
+                1.0 if "lattice" in low else 0.0,
+                1.0 if "mesh" in low else 0.0,
+                1.0 if "cryo" in low else 0.0,
+                0.1,
+            ]
 
-    alice = AtlasVectorStore("scholar_u_vec_alice", embeddings=FakeEmbeddings())
-    bob = AtlasVectorStore("scholar_u_vec_bob", embeddings=FakeEmbeddings())
+    emb = FakeEmbeddings()
+    alice = VectorStoreManager(persist_directory=str(workspaces_dir / "scholar_u_vec_alice" / "vector_store"), embeddings=emb)
+    bob = VectorStoreManager(persist_directory=str(workspaces_dir / "scholar_u_vec_bob" / "vector_store"), embeddings=emb)
     for store in (alice, bob):
         store.initialize()
-        assert store.prepare_dense() is True and store.dense_available
+        store.prepare_dense()
 
     ids = alice.add_documents([
         Document(page_content="lattice cryptography notes", metadata={"document_id": "doc-a", "filename": "a.txt"}),
         Document(page_content="mesh networking notes", metadata={"document_id": "doc-b", "filename": "b.txt"}),
     ])
+    alice.save()
     bob.add_documents([Document(page_content="lattice secrets of bob", metadata={"document_id": "doc-bob"})])
+    bob.save()
+    assert alice.dense_available is True and bob.dense_available is True
     assert len(ids) == 2
     assert alice.get_document_count() == 2 and bob.get_document_count() == 1
 
     hits = alice.similarity_search("lattice", k=5, score_threshold=0.5)
     assert hits and hits[0].page_content == "lattice cryptography notes"
-    assert all("bob" not in h.page_content for h in hits)  # strict owner isolation
-    assert {d.metadata["document_id"] for d in alice.get_all_documents()} == {"doc-a", "doc-b"}
+    assert all("bob" not in h.page_content for h in hits)
 
+    # Deleting a document AFTER save() must rebuild FAISS immediately rather than reloading stale disk index
     assert alice.delete_by_document_id("doc-a") == 1
     assert alice.get_document_count() == 1
     assert not any("lattice cryptography" in h.page_content for h in alice.similarity_search("lattice", k=5, score_threshold=0.0))
-    assert bob.get_document_count() == 1  # untouched
+    alice.save()
+    assert bob.get_document_count() == 1
 
-    # One-time import of a pre-Atlas on-disk workspace into MongoDB
-    legacy_dir = Path(get_settings().USER_WORKSPACES_DIR) / "scholar_u_vec_carol" / "vector_store"
-    legacy_dir.mkdir(parents=True)
-    (legacy_dir / "documents.json").write_text(
-        json.dumps([{"id": "old-1", "content": "legacy mesh chunk", "metadata": {"document_id": "doc-old"}}]),
-        encoding="utf-8",
-    )
-    mgr.provision_user_db("scholar_u_vec_carol")
-    carol = AtlasVectorStore("scholar_u_vec_carol", embeddings=FakeEmbeddings())
-    carol.initialize()
-    assert carol.get_document_count() == 1
-    assert (legacy_dir / "documents.json.migrated").exists() and not (legacy_dir / "documents.json").exists()
+    # Reloading from disk after partial delete preserves only remaining documents
+    reloaded = VectorStoreManager(persist_directory=str(workspaces_dir / "scholar_u_vec_alice" / "vector_store"), embeddings=emb)
+    reloaded.initialize()
+    assert reloaded.prepare_dense() is True
+    assert reloaded.get_document_count() == 1
+    assert not any("lattice cryptography" in h.page_content for h in reloaded.similarity_search("lattice", k=5, score_threshold=0.0))
 
+    # Deleting the final remaining document clears both dense index in RAM and stale faiss_index on disk
+    assert reloaded.delete_by_document_id("doc-b") == 1
+    assert reloaded.get_document_count() == 0
+    assert reloaded.similarity_search("mesh", k=5, score_threshold=0.0) == []
+    reloaded.save()
 
-def test_atlas_vector_search_pipeline_is_owner_filtered():
-    from app.rag.atlas_vector_store import AtlasVectorStore
+    reloaded_empty = VectorStoreManager(persist_directory=str(workspaces_dir / "scholar_u_vec_alice" / "vector_store"), embeddings=emb)
+    reloaded_empty.initialize()
+    reloaded_empty.prepare_dense()
+    assert reloaded_empty.get_document_count() == 0
+    assert reloaded_empty.similarity_search("mesh", k=5, score_threshold=0.0) == []
 
-    captured = {}
-
-    class SpyCollection:
-        def aggregate(self, pipeline):
-            captured["pipeline"] = pipeline
-            return iter([{"_id": "c1", "score": 0.9}])
-
-    class SpyVectorDb:
-        def __getitem__(self, name):
-            return SpyCollection()
-
-    class SpyManager:
-        vector_db = SpyVectorDb()
-        vector_db_name = "scholar_vectors"
-        client = object()
-
-    store = AtlasVectorStore("scholar_u_spy_user", embeddings=object(), manager=SpyManager())
-    hits = _REAL_VECTOR_SEARCH(store, [0.1, 0.2, 0.3], 4)
-    assert hits == [("c1", 0.9)]
-    stage = captured["pipeline"][0]["$vectorSearch"]
-    assert stage["index"] == store.index_name
-    assert stage["path"] == "embedding"
-    assert stage["limit"] == 4 and stage["numCandidates"] >= 100
-    assert stage["filter"] == {"owner_db": "scholar_u_spy_user"}
-    assert captured["pipeline"][1]["$project"]["score"] == {"$meta": "vectorSearchScore"}
+    # Re-adding after empty state immediately indexes and searches at t=0s
+    reloaded_empty.add_documents([Document(page_content="cryo bus spec", metadata={"document_id": "doc-c"})])
+    hits_c = reloaded_empty.similarity_search("cryo", k=3, score_threshold=0.3)
+    assert hits_c and hits_c[0].metadata["document_id"] == "doc-c"
 
 
 def test_writer_uses_private_user_memory_instead_of_abstaining():

@@ -1,8 +1,8 @@
 """Official MongoDB multi-database engine (PyMongo, Stable API v1, Atlas).
 
 Each registered user gets their own physically separated MongoDB database
-(e.g. `scholar_u_alice_1a2b3c4d`), isolating chats, Q&As, uploaded files,
-document chunks, short-term context, and long-term memories across users.
+(e.g. `scholar_u_alice_1a2b3c4d`), isolating chats, Q&As, uploaded file metadata,
+short-term context, and long-term memories across users.
 
 There is intentionally no embedded/local fallback: when `MONGODB_URI` is missing
 or the server is unreachable the application fails loudly instead of silently
@@ -49,7 +49,6 @@ class MultiTenantMongoManager:
         _MANAGER_SEQ += 1
         self.instance_id = _MANAGER_SEQ
         self.auth_db_name = getattr(settings, "MONGODB_AUTH_DB", "scholar_auth")
-        self.vector_db_name = getattr(settings, "MONGODB_VECTOR_DB", "scholar_vectors")
         self.uri = mongodb_uri if mongodb_uri is not None else getattr(settings, "MONGODB_URI", None)
         self.backend = "pymongo"
         self.client: Any = None
@@ -89,28 +88,22 @@ class MultiTenantMongoManager:
     def auth_db(self):
         return self.client[self.auth_db_name]
 
-    @property
-    def vector_db(self):
-        """Shared database holding the single Atlas Vector Search collection (`chunk_vectors`)."""
-        return self.client[self.vector_db_name]
-
     def provision_user_db(self, db_name: str):
-        if not db_name or db_name in (self.auth_db_name, self.vector_db_name):
-            raise ValueError("Refusing to bind user workspace to a control-plane database.")
+        if not db_name or db_name == self.auth_db_name:
+            raise ValueError("Refusing to bind user workspace to the shared auth database.")
         with self._lock:
             db = self.client[db_name]
             if db_name not in self._provisioned_dbs:
                 db["chats"].create_index("created_at")
                 db["chats"].create_index("thread_id")
                 db["files"].create_index("document_id")
-                db["chunks"].create_index("document_id")
                 db["short_term_memory"].create_index("created_at")
                 db["long_term_memory"].create_index("topic_key")
                 self._provisioned_dbs.add(db_name)
             return db
 
     def get_user_db(self, db_name: str):
-        if not db_name or db_name in (self.auth_db_name, self.vector_db_name):
+        if not db_name or db_name == self.auth_db_name:
             raise ValueError("Invalid or unauthorized per-user database target.")
         return self.client[db_name]
 

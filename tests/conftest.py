@@ -2,7 +2,6 @@ import pytest
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*renamed to.*")
 
-import math
 from unittest.mock import MagicMock, patch
 
 import mongomock
@@ -19,33 +18,6 @@ def mock_search_tool():
             {"title": "Autonomous Agents Overview", "url": "https://example.com/agents", "snippet": "Autonomous agents are AI systems capable of perceiving and acting in their environment.", "source_type": "web"}
         ]
         yield mock_s
-
-@pytest.fixture(autouse=True)
-def fake_atlas_vector_search(monkeypatch):
-    """Unit tests never reach Atlas: simulate `$vectorSearch` with brute-force cosine over the mongomock collection.
-
-    The real `$vectorSearch` pipeline is covered by `test_atlas_vector_search_pipeline_is_owner_filtered`
-    and by the live post-deploy verification against the official Atlas cluster.
-    """
-    from app.rag.atlas_vector_store import AtlasVectorStore
-
-    def _noop_index(self):
-        return None
-
-    def _brute_force_search(self, query_vector, k):
-        qn = math.sqrt(sum(x * x for x in query_vector)) or 1.0
-        scored = []
-        for row in self.vectors.find({"owner_db": self.db_name}):
-            vec = row["embedding"]
-            vn = math.sqrt(sum(x * x for x in vec)) or 1.0
-            cosine = sum(a * b for a, b in zip(query_vector, vec)) / (qn * vn)
-            scored.append((str(row["_id"]), (1.0 + cosine) / 2.0))  # Atlas cosine score
-        scored.sort(key=lambda pair: pair[1], reverse=True)
-        return scored[:k]
-
-    monkeypatch.setattr(AtlasVectorStore, "_ensure_vector_index", _noop_index)
-    monkeypatch.setattr(AtlasVectorStore, "_vector_search", _brute_force_search)
-
 
 @pytest.fixture
 def mock_settings(tmp_path):
@@ -78,7 +50,7 @@ def test_client(mock_settings, mock_vector_store, monkeypatch):
     with patch("app.config.get_settings", return_value=mock_settings), \
          patch("app.main.get_settings", return_value=mock_settings), \
          patch("app.db.mongo_engine.get_settings", return_value=mock_settings), \
-         patch("app.rag.atlas_vector_store.get_settings", return_value=mock_settings), \
+         patch("app.db.user_repository.get_settings", return_value=mock_settings), \
          patch("app.main.vector_store", mock_vector_store):
         app = create_app()
         app.state.vector_store = mock_vector_store

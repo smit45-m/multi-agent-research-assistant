@@ -5,16 +5,18 @@ import re
 import threading
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from app.config import get_settings
 from app.db.mongo_engine import get_mongo_manager
-from app.rag.atlas_vector_store import AtlasVectorStore
+from app.rag.vector_store import VectorStoreManager
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__, "INFO")
 
 _VECTOR_STORE_LOCK = threading.RLock()
-_USER_VECTOR_STORES: Dict[str, AtlasVectorStore] = {}
+_USER_VECTOR_STORES: Dict[str, VectorStoreManager] = {}
 _SHARED_EMBEDDINGS_LOCK = threading.Lock()
 _SHARED_EMBEDDINGS: Any = None
 _SHARED_EMBEDDINGS_TRIED = False
@@ -36,16 +38,19 @@ def _get_shared_embeddings():
     return _SHARED_EMBEDDINGS
 
 
-def get_user_vector_store(db_name: str) -> AtlasVectorStore:
-    """Returns the Atlas-backed chunk/vector store scoped strictly to `db_name`."""
+def get_user_vector_store(db_name: str) -> VectorStoreManager:
+    """Returns a physically isolated FAISS + documents store scoped strictly to `db_name`."""
     if not db_name:
         raise ValueError("User database name is required for isolated vector store access.")
     with _VECTOR_STORE_LOCK:
         existing = _USER_VECTOR_STORES.get(db_name)
         if existing is not None:
             return existing
+        settings = get_settings()
+        base = Path(getattr(settings, "USER_WORKSPACES_DIR", "data/user_workspaces"))
+        vs_dir = base / db_name / "vector_store"
         emb = _get_shared_embeddings()
-        store = AtlasVectorStore(db_name, embeddings=emb)
+        store = VectorStoreManager(persist_directory=str(vs_dir), embeddings=emb)
         store.initialize()
         if emb is not None:
             store.prepare_dense()
@@ -166,6 +171,7 @@ class UserWorkspaceRepository:
                     ]
                     if ids_to_del:
                         vs.delete_documents(ids_to_del)
+            vs.save()
         except Exception as exc:
             logger.warning(f"Could not purge vector store chunks on user file delete ({target_id}): {exc}")
         return True

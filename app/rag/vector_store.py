@@ -5,6 +5,7 @@ semantic model loading fails. Existing legacy index files are never removed.
 """
 import json
 import os
+import shutil
 import threading
 import uuid
 from pathlib import Path
@@ -63,20 +64,23 @@ class VectorStoreManager:
             self._rebuild_dense()
             return self.embedding_status == "ready"
 
-    def _rebuild_dense(self):
+    def _rebuild_dense(self, force: bool = False):
         if self.embeddings_model is None or not self._documents:
             self.vector_store = None
             return
         try:
             from langchain_community.vectorstores import FAISS
             faiss_dir = Path(self.persist_directory) / "faiss_index"
-            if faiss_dir.exists() and (faiss_dir / "index.faiss").exists():
+            if not force and faiss_dir.exists() and (faiss_dir / "index.faiss").exists():
                 try:
-                    self.vector_store = FAISS.load_local(
+                    candidate = FAISS.load_local(
                         str(faiss_dir), self.embeddings_model, allow_dangerous_deserialization=True
                     )
-                    self.embedding_status = "ready"
-                    return
+                    indexed_ids = set(getattr(candidate, "index_to_docstore_id", {}).values())
+                    if indexed_ids == set(self._documents):
+                        self.vector_store = candidate
+                        self.embedding_status = "ready"
+                        return
                 except Exception:
                     pass
 
@@ -114,9 +118,9 @@ class VectorStoreManager:
                         self.vector_store.add_documents(new_docs, ids=ids)
                         self.embedding_status = "ready"
                     except Exception:
-                        self._rebuild_dense()
+                        self._rebuild_dense(force=True)
                 else:
-                    self._rebuild_dense()
+                    self._rebuild_dense(force=True)
             return ids
 
     def get_all_documents(self):
@@ -143,11 +147,15 @@ class VectorStoreManager:
 
     def delete_documents(self, doc_ids):
         with self._lock:
+            removed = False
             for identifier in doc_ids:
-                self._documents.pop(identifier, None)
+                if self._documents.pop(identifier, None) is not None:
+                    removed = True
+            if not removed:
+                return
             self.version += 1
             if self.embeddings_model is not None:
-                self._rebuild_dense()
+                self._rebuild_dense(force=True)
 
     def delete_by_document_id(self, document_id):
         with self._lock:
@@ -170,9 +178,11 @@ class VectorStoreManager:
             payload = [{"id": identifier, "content": doc.page_content, "metadata": doc.metadata} for identifier, doc in self._documents.items()]
             temporary.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
             os.replace(temporary, target)
+            faiss_dir = directory / "faiss_index"
             if self.vector_store is not None:
                 try:
-                    faiss_dir = directory / "faiss_index"
                     self.vector_store.save_local(str(faiss_dir))
                 except Exception:
                     pass
+            elif faiss_dir.exists():
+                shutil.rmtree(faiss_dir, ignore_errors=True)

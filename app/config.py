@@ -77,10 +77,6 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     MONGODB_URI: Optional[str] = None
     MONGODB_AUTH_DB: str = "scholar_auth"
-    # Atlas Vector Search: one shared collection + one index (free M0 clusters allow 3 search indexes)
-    MONGODB_VECTOR_DB: str = "scholar_vectors"
-    MONGODB_VECTOR_INDEX: str = "chunk_vector_index"
-    # Legacy on-disk per-user vector stores, auto-imported into Atlas once and then renamed
     USER_WORKSPACES_DIR: str = str(PROJECT_ROOT / "data" / "user_workspaces")
 
     model_config = SettingsConfigDict(
@@ -92,7 +88,7 @@ class Settings(BaseSettings):
         # Allow GROQ_API_KEY from deployment .env files to populate OPENAI_API_KEY automatically
         if not self.OPENAI_API_KEY and self.GROQ_API_KEY:
             self.OPENAI_API_KEY = self.GROQ_API_KEY
-        # Allow DATA_DIR to anchor the shared vector store and legacy workspace paths
+        # Allow DATA_DIR to anchor shared and per-user FAISS vector store paths
         if self.DATA_DIR:
             data_root = Path(self.DATA_DIR)
             if self.VECTOR_STORE_PATH == str(PROJECT_ROOT / "data" / "vector_store"):
