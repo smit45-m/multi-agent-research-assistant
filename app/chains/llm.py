@@ -355,7 +355,7 @@ class BoundedLLM:
         for model_name in candidate_models:
             streamed_any = False
             try:
-                stream_max_tokens = 2400 if self.mode in ("fast", "quick") else max(max_tokens, 2400)
+                stream_max_tokens = 2400 if self.mode in ("fast", "quick") else max(max_tokens, 4096)
                 gen_cfg = {
                     "temperature": 0.2,
                     "maxOutputTokens": stream_max_tokens,

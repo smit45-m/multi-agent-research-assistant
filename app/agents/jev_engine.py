@@ -812,12 +812,13 @@ class GeminiDecisionEngine:
         private_context: bool,
         mem_relevance: float,
         wants_equations_or_examples: bool,
+        mode: str = "balanced",
     ) -> JevChoice:
         """
         `gemini-decision-1` writer synthesis strategy classification:
         Classifies the optimal grounding/teaching mode for `WriterAgent` with 0 output tokens:
         - `memory_recall`: user is asking about their own conversation history / profile
-        - `educator_synthesis`: query asks for equations, derivations, or worked examples or local slides have partial coverage
+        - `educator_synthesis`: Deep Research mode or query asks for explanations, processes, equations, derivations, or worked examples
         - `strict_evidence_only`: strict corpus/attachment grounding
         - `hybrid_knowledge`: blend retrieved evidence with domain expertise
         """
@@ -828,9 +829,9 @@ class GeminiDecisionEngine:
         elif has_docs and strict and not wants_equations_or_examples and not local_partial:
             selected = "strict_evidence_only"
             probs = {"strict_evidence_only": 0.92, "educator_synthesis": 0.04, "hybrid_knowledge": 0.03, "memory_recall": 0.01}
-        elif wants_equations_or_examples or local_partial:
+        elif not strict and (mode == "research" or wants_equations_or_examples or local_partial):
             selected = "educator_synthesis"
-            probs = {"educator_synthesis": 0.94, "hybrid_knowledge": 0.04, "strict_evidence_only": 0.01, "memory_recall": 0.01}
+            probs = {"educator_synthesis": 0.95, "hybrid_knowledge": 0.03, "strict_evidence_only": 0.01, "memory_recall": 0.01}
         else:
             selected = "hybrid_knowledge"
             probs = {"hybrid_knowledge": 0.90, "educator_synthesis": 0.05, "strict_evidence_only": 0.04, "memory_recall": 0.01}

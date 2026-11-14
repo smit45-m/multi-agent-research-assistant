@@ -91,7 +91,7 @@ class HybridRetriever:
         chunks = [query]
         parts = re.split(r"\s+(?:versus|vs\.?|compared to|and)\s+|[,?;\n]+", query, flags=re.I)
         meta_re = re.compile(
-            r"\b(?:explain|describe|define|what|how|why|give|me|with|proper|equation|equations|formula|formulas|example|examples|detail|details|step\s+by\s+step|walkthrough)\b",
+            r"\b(?:explain|describe|define|what|how|why|give|me|with|proper|equation|equations|formula|formulas|example|examples|detail|details|step\s+by\s+step|walkthrough|also|whole|ways|of|is|are|the)\b",
             re.I,
         )
         cleaned_parts = []
@@ -250,6 +250,31 @@ class HybridRetriever:
                                 )
                                 result[-1] = cand_doc
                                 break
+            if len(documents) > 3:
+                parent_groups = defaultdict(list)
+                for d_item in documents:
+                    pid = d_item.metadata.get("document_id")
+                    if pid:
+                        parent_groups[pid].append(d_item)
+                stitched_result = []
+                for doc in result:
+                    pid = doc.metadata.get("document_id")
+                    p_list = parent_groups.get(pid, [])
+                    if len(p_list) > 3 and len(doc.page_content) < 1100:
+                        doc_fp = fingerprint(doc.page_content)
+                        match_idx = next((idx for idx, item in enumerate(p_list) if fingerprint(item.page_content) == doc_fp), None)
+                        if match_idx is not None:
+                            merged_content = doc.page_content
+                            for offset in (1, 2):
+                                nxt_idx = match_idx + offset
+                                if nxt_idx < len(p_list):
+                                    nxt_text = p_list[nxt_idx].page_content
+                                    if len(merged_content) + len(nxt_text) <= 2200:
+                                        merged_content = f"{merged_content}\n\n{nxt_text}"
+                            if merged_content != doc.page_content:
+                                doc = Document(page_content=merged_content, metadata={**doc.metadata, "slide_context_expanded": True})
+                    stitched_result.append(doc)
+                result = stitched_result
             if mode == "hierarchical":
                 expanded = []
                 for doc in result:

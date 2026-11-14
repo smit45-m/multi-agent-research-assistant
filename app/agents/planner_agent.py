@@ -72,7 +72,15 @@ class PlannerAgent:
                 method = "gemini_decision_1_fast_plan"
         if limit > 1 and len(sub_questions) == 1:
             # Split compound questions on ?, ;, newlines, or explicit multi-topic conjunctions
-            parts = [part.strip(" ,;.") for part in re.split(r"[?;\n]+|\bAND\s+WHAT\s+ARE\b|\bAND\s+EXPLAIN\b|\bAND\s+HOW\b|\balso\s+explain\b", query, flags=re.I) if len(tokens(part)) >= 2]
+            parts = [
+                part.strip(" ,;.")
+                for part in re.split(
+                    r"[?;\n]+|\bAND\s+ALSO\s+EXPLAIN\b|\bAND\s+WHAT\s+ARE\b|\bAND\s+WHAT\s+IS\b|\bAND\s+EXPLAIN\b|\bAND\s+HOW\b|\balso\s+explain\b",
+                    query,
+                    flags=re.I,
+                )
+                if len(tokens(part)) >= 2
+            ]
             if len(parts) == 1 and "," in query:
                 comma_parts = [p.strip() for p in re.split(r",|\band\b", query, flags=re.I) if p.strip()]
                 if len(comma_parts) >= 3:
@@ -81,6 +89,7 @@ class PlannerAgent:
                 anchor = _raw_anchor_terms(parts[0], 3)
                 anchored = [_anchor_subquestion(p, anchor) for p in parts]
                 sub_questions.extend(q for q in anchored if len(tokens(q)) >= 2)
+                limit = max(limit, min(len(sub_questions), 5))
         # Contextual follow-up expansion using this user's private short-term memory
         mem_meta = state.get("user_memory_meta") or {}
         latest_topic = str(mem_meta.get("latest_topic") or "").strip()

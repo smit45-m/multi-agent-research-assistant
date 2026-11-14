@@ -416,6 +416,11 @@ class WriterAgent:
                     "equation", "equations", "formula", "formulas", "derive", "derivation",
                     "math", "mathematical", "arima", "seasonality", "walkthrough",
                     "with example", "with proper", "and examples", "step by step",
+                    "explain", "normalization", "standardization", "transformation",
+                    "discretization", "preprocessing", "whole process", "ways of",
+                    "types of", "methods of", "regression", "classification", "clustering",
+                    "time series", "forecast", "entropy", "information gain", "gini",
+                    "distance", "similarity", "correlation", "chi-square", "pca",
                 )
             )
             local_partial = bool(state.get("local_partial_coverage"))
@@ -429,9 +434,17 @@ class WriterAgent:
                 private_context=bool(route.get("private_context")),
                 mem_relevance=relevance(query, user_mem_ctx) if has_user_memory else 0.0,
                 wants_equations_or_examples=wants_equations_or_examples,
+                mode=mode,
             )
             needs_educator_expansion = bool(
-                docs and not strict and (grounding_decision.selected == "educator_synthesis" or wants_equations_or_examples or local_partial)
+                docs
+                and not strict
+                and (
+                    mode == "research"
+                    or grounding_decision.selected == "educator_synthesis"
+                    or wants_equations_or_examples
+                    or local_partial
+                )
             )
             is_memory_query = bool(
                 has_user_memory
@@ -453,6 +466,19 @@ class WriterAgent:
                 "Do NOT invent external worked traces, ASCII diagrams, unretrieved equations, or speculative details."
             )
 
+            research_educator_grounded_style = (
+                "Write an exhaustive, deeply explainable, textbook-grade Deep Research masterclass report (1,400–2,800+ words) that answers EVERY part of the user's question in complete detail:\n\n"
+                "1. **# 🎯 Executive Summary & Core Foundations**: Define the core concepts clearly from multiple perspectives, citing retrieved sources inline with `[1]`, `[2]`.\n"
+                "2. **# ⚙️ End-to-End Process & Stage-by-Stage Deconstruction**: Break down the entire workflow or process step-by-step (with a clean Unicode flow diagram `┌───┐ ──►` where helpful). For each stage (e.g., Data Cleaning, Data Integration, Data Reduction, Data Transformation & Discretization), explain *what* it does, *why* it is needed, and *how* each sub-technique works in detail with `[1]`, `[2]` citations.\n"
+                "3. **# 📐 Mathematical Formulations, Equations & Methods (Deep Dive)**: NEVER leave named methods or techniques (such as Min-Max Normalization, Z-Score Normalization, Decimal Scaling, ARIMA, etc.) as bare bullet titles! For EVERY method mentioned in the query or retrieved slides:\n"
+                "   - Explain the **Conceptual Intuition** and purpose.\n"
+                "   - Present the **Exact Mathematical Formula / Equation** (`$$...$$` display math and clean notation).\n"
+                "   - Provide an **Explicit Definition of Every Variable & Symbol** in the formula.\n"
+                "   - Walk through a **Concrete Step-by-Step Numerical Worked Example** showing exact input numbers, substitution into the formula, and the final calculated value.\n"
+                "4. **# 📊 Comprehensive Comparative Analysis Table**: Include a rich Markdown table comparing all methods/stages across **Method**, **Mathematical Formula**, **Output Range / Scale**, **Strengths & Sensitivity to Outliers**, and **Best Use Case**.\n"
+                "5. **# ⚠️ Practical Trade-Offs, Edge Cases & Key Takeaways**: Summarize when to choose each method, common pitfalls, and actionable takeaways."
+            )
+
             fast_grounded_style = (
                 "Provide a crisp, strictly evidence-grounded Markdown answer (180-350 words) starting with a heading (`### Direct Answer`). "
                 "Directly answer every part of the question using focused bullets and inline [1], [2] citations. "
@@ -466,15 +492,15 @@ class WriterAgent:
             )
 
             fast_educator_grounded_style = (
-                "Provide a fast, structured, textbook-grade technical answer (350-650 words) that directly and completely answers EVERY part of the user's question. "
-                "Ground definitions and examples from the supplied passages with inline [1], [2] citations, AND provide the complete mathematical equations (with every variable defined) and concrete numerical examples for all requested concepts (even if the retrieved lecture slides only list slide titles or brief bullets). "
+                "Provide a fast, structured, textbook-grade technical answer (450-850 words) that directly and completely answers EVERY part of the user's question. "
+                "Ground definitions and examples from the supplied passages with inline [1], [2] citations, AND provide the complete mathematical equations (with every variable defined) and concrete numerical examples for all requested concepts or methods (even if the retrieved lecture slides only list slide titles or brief bullets). "
                 "Follow a clean hierarchy (`# Main Topic`, `## 🎯 Core Concepts & Definitions`, `## 📐 Mathematical Equations & Formulations`, `## 💡 Concrete Worked Examples`, `## 📊 Summary Comparison Table`)."
             )
 
             balanced_educator_grounded_style = (
-                "Provide a comprehensive, example-driven explanation (550-950 words) following the expert teacher standard: "
+                "Provide a comprehensive, example-driven explanation (700-1,200 words) following the expert teacher standard: "
                 "1) 🎯 Core Idea & Definitions grounded in [1], [2], "
-                "2) 📐 Complete Mathematical Equations & Variable Definitions for every requested concept, "
+                "2) 📐 Complete Mathematical Equations & Variable Definitions for every requested concept or method, "
                 "3) 💡 Step-by-Step Numerical Worked Examples (incorporating examples from [1], [2] plus full calculations), "
                 "4) 📊 Comparative Analysis Matrix, "
                 "5) 🔑 Key Takeaways."
@@ -482,7 +508,7 @@ class WriterAgent:
 
             lengths = {
                 "fast": (
-                    1600 if needs_educator_expansion else 1000,
+                    1800 if needs_educator_expansion else 1000,
                     (fast_educator_grounded_style if needs_educator_expansion else fast_grounded_style) if docs else (
                         "Provide a fast, ultra-crisp, highly-structured technical answer (260-480 words). "
                         "Directly and completely address EVERY part of the user question, including key formulas, defined variables, and concrete examples. "
@@ -490,7 +516,7 @@ class WriterAgent:
                     ),
                 ),
                 "balanced": (
-                    2200,
+                    2600,
                     (balanced_educator_grounded_style if needs_educator_expansion else balanced_grounded_style) if docs else (
                         "Provide an in-depth, example-driven explanation (550-850 words) following the expert teacher standard: "
                         "1) Core Idea & Direct Answer, 2) Step-by-Step Mechanisms & Equations, 3) Concrete Worked Walkthrough, "
@@ -498,8 +524,8 @@ class WriterAgent:
                     ),
                 ),
                 "research": (
-                    3200 if needs_educator_expansion else (2400 if docs else 3600),
-                    ((research_technical_style if is_technical_or_deep else research_general_style) if needs_educator_expansion else research_grounded_style)
+                    4096 if needs_educator_expansion else (2400 if docs else 4096),
+                    (research_educator_grounded_style if needs_educator_expansion else research_grounded_style)
                     if docs else (research_technical_style if is_technical_or_deep else research_general_style),
                 ),
             }
@@ -527,9 +553,13 @@ class WriterAgent:
             elif needs_educator_expansion:
                 policy = (
                     "Prefer supplied evidence: ground all definitions, facts, and examples present in `evidence` and cite them with [1], [2]. "
-                    "When the retrieved passages are lecture slides or partial excerpts that omit full mathematical equations, derivations, or worked examples requested by the user, "
-                    "seamlessly provide the complete, rigorous mathematical equations (with every symbol/parameter defined) and step-by-step worked examples from foundational domain knowledge. "
-                    "Attach [1], [2] citations strictly to claims taken from the supplied passages, and NEVER refuse to explain a concept or equation just because a slide excerpt is brief."
+                    "CRITICAL EDUCATOR & DEEP RESEARCH RULE: Retrieved lecture slides often list concepts, stages, or mathematical methods only as brief bullet headings (e.g., 'Min-max normalization', 'Z-score normalization', 'Normalization by decimal scaling'). "
+                    "You MUST NEVER leave named methods, algorithms, or normalization/statistical techniques as bare bullet lists! "
+                    "For EVERY concept, stage, and method mentioned in the query or retrieved slides, you MUST expand it in full textbook detail: "
+                    "(1) explain its intuition and purpose, "
+                    "(2) write its exact Mathematical Formula / Equation (`$$...$$`) and explicitly define every variable/symbol, and "
+                    "(3) walk through a concrete step-by-step numerical worked example showing exact input values, formula substitution, and final calculated output. "
+                    "Attach [1], [2] citations to claims grounded in the supplied passages."
                 )
             elif docs:
                 policy = (

@@ -66,6 +66,7 @@ class RetrieverAgent:
                     "format": attachment["kind"],
                     "relevance_score": max((relevance(q, sanitized_att_text, attachment["filename"]) for q in questions), default=0.0),
                     "from_attachment": True,
+                    "att_idx": idx_att,
                 }
                 if idx_att < 3:
                     fallback_attachment_candidates.append(att_entry)
@@ -77,12 +78,28 @@ class RetrieverAgent:
                     def get_all_documents(self):
                         return att_docs
                 att_hr = HybridRetriever(_AttStore())
-                for d_hit in att_hr.retrieve(query, mode="hybrid", top_k=top_k, source_filters=filters):
-                    m_hit = dict(d_hit.metadata)
-                    m_hit["content"] = d_hit.page_content
-                    m_hit["from_attachment"] = True
-                    m_hit["relevance_score"] = max(float(m_hit.get("relevance_score", 0.0)), 0.32)
-                    candidates.append(m_hit)
+                att_queries = list(dict.fromkeys([query, *questions]))[:4]
+                seen_att_indices = set()
+                for q_att in att_queries:
+                    for d_hit in att_hr.retrieve(q_att, mode="hybrid", top_k=top_k, source_filters=filters):
+                        m_hit = dict(d_hit.metadata)
+                        att_i = m_hit.get("att_idx")
+                        if att_i in seen_att_indices:
+                            continue
+                        if isinstance(att_i, int):
+                            seen_att_indices.add(att_i)
+                        merged_text = d_hit.page_content
+                        if len(att_docs) > 3 and isinstance(att_i, int) and len(merged_text) < 1100:
+                            for nxt_offset in (1, 2):
+                                nxt_i = att_i + nxt_offset
+                                if nxt_i < len(att_docs) and att_docs[nxt_i].metadata.get("source") == m_hit.get("source"):
+                                    nxt_txt = att_docs[nxt_i].page_content
+                                    if len(merged_text) + len(nxt_txt) <= 2200:
+                                        merged_text = f"{merged_text}\n\n{nxt_txt}"
+                        m_hit["content"] = merged_text
+                        m_hit["from_attachment"] = True
+                        m_hit["relevance_score"] = max(float(m_hit.get("relevance_score", 0.0)), 0.32)
+                        candidates.append(m_hit)
         # Multi-Hop Web Navigation & Live URL Traversal
         from app.rag.web_navigator import MultiHopWebNavigator
         extracted_urls = MultiHopWebNavigator.extract_urls(query)
