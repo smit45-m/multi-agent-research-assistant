@@ -128,7 +128,11 @@ def _build_telemetry(raw_tel: dict) -> AgentTelemetryInfo:
         total_latency_ms=raw_tel.get("total_latency_ms", 0.0),
         baseline_synthesis_time_ms=raw_tel.get("baseline_synthesis_time_ms", 0.0),
         optimized_synthesis_time_ms=raw_tel.get("optimized_synthesis_time_ms", 0.0),
-        synthesis_reduction_pct=raw_tel.get("synthesis_reduction_pct", 60.0)
+        synthesis_reduction_pct=raw_tel.get("synthesis_reduction_pct", 60.0),
+        llm_calls=raw_tel.get("llm_calls", 0),
+        input_tokens=raw_tel.get("input_tokens", 0),
+        output_tokens=raw_tel.get("output_tokens", 0),
+        retrieval_rounds=raw_tel.get("retrieval_rounds", 0),
     )
 
 def perform_research_task(

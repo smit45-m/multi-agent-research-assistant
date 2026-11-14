@@ -104,11 +104,13 @@ class LlamaGroqJudge(DeepEvalBaseLLM):
         super().__init__(model_name)
 
     def load_model(self):
+        from app.chains.llm import get_shared_client
         return OpenAI(
             api_key=self.settings.OPENAI_API_KEY or self.settings.GROQ_API_KEY,
             base_url=self.settings.OPENAI_BASE_URL,
             timeout=14.0,
             max_retries=0,
+            http_client=get_shared_client(),
         )
 
     def get_model_name(self) -> str:
@@ -121,7 +123,6 @@ class LlamaGroqJudge(DeepEvalBaseLLM):
             "openai/gpt-oss-120b",
             "openai/gpt-oss-20b",
             "openai/gpt-oss-safeguard-20b",
-            "allam-2-7b",
         ]
         rot = self._call_counter % len(groq_pool)
         rotated_pool = groq_pool[rot:] + groq_pool[:rot]
@@ -176,7 +177,7 @@ class LlamaGroqJudge(DeepEvalBaseLLM):
                 from app.chains.llm import get_shared_client
                 http_client = get_shared_client()
 
-                for gem_mod in ("gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.5-flash"):
+                for gem_mod in ("gemini-flash-lite-latest", "gemini-3-flash-preview", "gemini-3.5-flash-lite", "gemini-3.5-flash"):
                     try:
                         url = (
                             f"https://generativelanguage.googleapis.com/v1beta/models/"
@@ -187,6 +188,8 @@ class LlamaGroqJudge(DeepEvalBaseLLM):
                             "x-goog-api-key": self.settings.GEMINI_API_KEY,
                         }
                         gen_cfg: Dict[str, Any] = {"temperature": 0.0, "maxOutputTokens": 600}
+                        if "3.5-flash" in gem_mod and "lite" not in gem_mod:
+                            gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
                         if json_mode:
                             gen_cfg["responseMimeType"] = "application/json"
                         body = {
@@ -377,6 +380,10 @@ def build_seeded_vector_store(
     vstore = VectorStoreManager(persist_directory=temp_dir)
     docs_to_add = documents if documents is not None else EVAL_CORPUS_DOCUMENTS
     vstore.add_documents(docs_to_add)
+    try:
+        vstore.prepare_dense()
+    except Exception:
+        pass
     return vstore
 
 

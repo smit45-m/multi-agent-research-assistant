@@ -50,7 +50,7 @@ class BM25Retriever:
 
 
 class HybridRetriever:
-    def __init__(self, vector_store, rrf_k=60, min_relevance=0.18, relative_cutoff=0.5):
+    def __init__(self, vector_store, rrf_k=60, min_relevance=0.18, relative_cutoff=0.72):
         self.vector_store = vector_store
         self.relative_cutoff = relative_cutoff
         self.rrf_k = rrf_k

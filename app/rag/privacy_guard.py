@@ -25,15 +25,53 @@ _AIR_GAP_STATE = threading.local()
 # Patterns for sensitive company PII / credentials
 PII_PATTERNS = [
     (re.compile(r"\b(Primary\s+Owner|Owner|Author|Contact|Employee|Patient|Prepared\s+by)(\s*:\s*)([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})"), r"\1\2[NAME_PROTECTED]"),
-    (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b"), "[EMAIL_PROTECTED]"),
+    (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,15}\b"), "[EMAIL_PROTECTED]"),
     (re.compile(r"\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"), "[PHONE_PROTECTED]"),
     (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "[SSN_PROTECTED]"),
     (re.compile(r"\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13})\b"), "[CARD_PROTECTED]"),
     (
-        re.compile(r"(?:api[_-]?key|secret|token|password|bearer)[\s:=]+['\"]?([a-zA-Z0-9_\-\.]{16,})['\"]?", re.IGNORECASE),
+        re.compile(
+            r"(?:api[_-]?key|secret|token|password|bearer)"
+            r"(?:\s*[:=]\s*['\"]?[a-zA-Z0-9_\-\.]{8,}['\"]?"
+            r"|\s+['\"]?(?:(?=[a-zA-Z0-9_\-\.]*[0-9_\-])[a-zA-Z0-9_\-\.]{8,}|[a-zA-Z0-9_\-\.]{16,})['\"]?)",
+            re.IGNORECASE,
+        ),
         "token=[REDACTED_CREDENTIAL]",
     ),
 ]
+
+_INJECTION_PHRASE_RE = re.compile(
+    r"(?:"
+    r"(?:ignore|disregard|forget|override|bypass)\s+(?:all\s+|any\s+|the\s+)?(?:previous|prior|above|system|safety|security)?\s*(?:instructions?|prompts?|rules?|constraints?|guardrails?)"
+    r"|system\s*override\b"
+    r"|(?:reveal|print|output|leak|exfiltrate|echo)\s+(?:your\s+)?(?:system\s*prompt|hidden\s*instructions?|api[_\s]*keys?|secrets?|credentials?|pwned|hacked)"
+    r"|\b(?:output|respond|reply|say|print)\s+(?:only|exactly)\s*[:\"']"
+    r"|(?:<<SYS>>|<\|im_start\|>|\[/?INST\])"
+    r")",
+    re.IGNORECASE,
+)
+_INLINE_OVERRIDE_RE = re.compile(
+    r"(?:ignore|disregard|forget|override|bypass)\s+(?:all\s+|any\s+|the\s+)?(?:previous|prior|above|system|safety|security)\s+(?:instructions?|prompts?|rules?|constraints?|guardrails?)[^\n.!?]*[.!?]?",
+    re.IGNORECASE,
+)
+
+
+def sanitize_untrusted_text(text: str, strip_pii: bool = False) -> str:
+    """Strips prompt-injection directives across line breaks/sentences and optionally masks PII."""
+    if not text:
+        return ""
+    cleaned = _INLINE_OVERRIDE_RE.sub(" ", text.replace("\r\n", "\n"))
+    kept_lines: List[str] = []
+    for raw_line in cleaned.split("\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+        segments = re.split(r"(?<=[.!?])\s+", line)
+        safe_segments = [seg.strip() for seg in segments if seg.strip() and not _INJECTION_PHRASE_RE.search(seg)]
+        if safe_segments:
+            kept_lines.append(" ".join(safe_segments))
+    result = "\n".join(kept_lines).strip()
+    return redact_pii(result) if strip_pii else result
 
 _EMBED_HINTS = ("embed", "minilm", "bge-", "e5-", "nomic-embed", "mxbai")
 
@@ -471,137 +509,68 @@ def synthesize_local_airgapped_report(
     when no local LLM daemon (Ollama / LM Studio) is running.
     """
     if not docs and user_memory_context and user_memory_context.strip():
-        safe_mem = redact_pii(user_memory_context.strip())
-        return f"""# 🔒 Executive Summary (Private Air-Gapped Memory Context)
-
-> 🛡️ **Privacy Guarantee**: Air-Gapped Mode is active. External cloud APIs and Web Search are strictly disabled.
-
-### 🧠 Personal Workspace Memory Recalled
-Using your isolated Short-Term and Long-Term MongoDB memory context for **"{query}"**:
-
-{safe_mem}
-
-*All context remained strictly inside your authenticated workspace with **0 bytes** sent to external cloud APIs.*
-"""
+        safe_mem = sanitize_untrusted_text(user_memory_context.strip(), strip_pii=True)
+        return f"### Recalled Workspace Context\n\n{safe_mem}"
     if not docs:
-        return f"""# 🔒 Executive Summary (Private Air-Gapped Mode)
+        return (
+            f"No relevant local or attached documents were found for **\"{redact_pii(query)}\"**. "
+            "Upload private files or index documents in the workspace before running Air-Gapped Privacy mode."
+        )
 
-> 🛡️ **Privacy Guarantee**: Air-Gapped Mode is active. Gemini, Groq, and Web Search are strictly disabled to protect proprietary corporate data.
+    ranked_candidates: List[Tuple[float, float, int, int, str]] = []
+    seen_norm = set()
 
-### ⚠️ No Private Documents Found for Analysis
-No relevant private documents were found in the local vector store for the query: **"{query}"**.
-
-To analyze proprietary company information without any data leaving your computer:
-1. Click **Add files / media** in the research brief (or run `ollama serve` to enable local neural generation).
-2. Select your internal files (`.pdf`, `.xlsx`, `.csv`, `.docx`, `.json`, `.txt`, code, or images).
-3. Click **Start research**.
-
-The system will ingest, embed via local HuggingFace `all-MiniLM-L6-v2`, index into local FAISS/BM25, and synthesize answers **100% on your device with 0 bytes sent to external cloud APIs**.
-"""
-
-    ranked_passages = []
     for idx, doc in enumerate(docs):
-        raw_title = doc.get("filename") or doc.get("title") or f"Document {idx + 1}"
+        doc_id = idx + 1
+        raw_title = doc.get("filename") or doc.get("title") or f"Document {doc_id}"
         title = os.path.basename(raw_title)
-        if re.match(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}", title):
-            title = doc.get("source_type", "Document").capitalize() + f" {idx + 1}"
-
-        content = redact_pii(doc.get("content", ""))
-        sentences = grounded_sentences(query, content, limit=6)
-        if not sentences and content:
-            raw_lines = [line.strip() for line in content.split("\n") if len(line.strip()) > 35]
-            sentences = raw_lines[:4]
+        content = sanitize_untrusted_text(doc.get("content", ""), strip_pii=True)
+        if not content:
+            continue
 
         doc_rel = relevance(query, content, title)
-        ranked_passages.append({
-            "id": idx + 1,
-            "title": title,
-            "format": doc.get("source_type", "document"),
-            "sentences": sentences,
-            "content": content,
-            "relevance": max(doc_rel, 0.75),
-            "snippet": content[:300],
-        })
 
-    ranked_passages.sort(key=lambda x: x["relevance"], reverse=True)
+        # Combine wrapped prose sentences with line-level structured fields (e.g., key: value memos)
+        candidate_units: List[str] = grounded_sentences(query, content, limit=8)
+        for line in content.split("\n"):
+            line = line.strip(" -*\t")
+            if len(line) < 20:
+                continue
+            for seg in re.split(r"(?<=[.!?])\s+", line):
+                seg = seg.strip()
+                if len(seg) >= 20:
+                    candidate_units.append(seg)
 
-    all_sentences = []
-    seen = set()
-    for p in ranked_passages:
-        for s in p["sentences"]:
-            norm = s.lower().strip()
-            if norm not in seen and len(s) >= 35:
-                seen.add(norm)
-                all_sentences.append((p["id"], p["title"], s))
+        for sent_idx, s in enumerate(candidate_units):
+            norm = re.sub(r"\s+", " ", s.lower()).strip()
+            if norm in seen_norm:
+                continue
+            seen_norm.add(norm)
+            s_rel = relevance(query, s)
+            ranked_candidates.append((s_rel, doc_rel, doc_id, sent_idx, s))
 
-    definition_candidates = [
-        (doc_id, title, s)
-        for doc_id, title, s in all_sentences
-        if re.search(r"\b(is|are|refer to|referring to|represents?|defined as|consists? of|combines?)\b", s, re.IGNORECASE)
-    ]
-    core_sents = definition_candidates[:2] if definition_candidates else all_sentences[:2]
-    core_text = " ".join([f"{s} `[Doc {doc_id}]`" for doc_id, title, s in core_sents])
-    if not core_text:
-        core_text = f"Synthesized verified evidence from local indexed documents for **\"{query}\"**."
+    if not ranked_candidates:
+        return f"No readable grounded passages remained after sanitization for **\"{redact_pii(query)}\"**."
 
-    mechanism_sents = [
-        (doc_id, title, s)
-        for doc_id, title, s in all_sentences
-        if (doc_id, title, s) not in core_sents
-        and re.search(r"\b(input|output|layer|state|hidden|sequence|weights?|function|network|context|train|model|step)\b", s, re.IGNORECASE)
-    ]
-    mechanism_items = mechanism_sents[:4] if mechanism_sents else all_sentences[2:6]
+    relevant_only = [item for item in ranked_candidates if item[0] > 0.0]
+    pool = relevant_only if relevant_only else ranked_candidates
+    pool.sort(key=lambda x: (round(x[0], 4), round(x[1], 4), -x[2], -x[3]), reverse=True)
 
-    mechanism_md = (
-        "\n".join([f"{i+1}. **Mechanism & Operation**: {s} `[Doc {doc_id}]`" for i, (doc_id, title, s) in enumerate(mechanism_items)])
-        if mechanism_items
-        else "1. **Sequential Processing**: Operates iteratively over retrieved passages."
-    )
+    selected = pool[:8]
+    # Reorder top facts coherently by (doc_id, sent_idx) after relevance filtering when readable,
+    # keeping highest-scoring sentence first as direct answer.
+    lead = selected[0]
+    details = selected[1:]
 
-    table_rows = []
-    for p in ranked_passages[:5]:
-        metrics_found = re.findall(r"[\$€£]\d+(?:\.\d+)?[MBKmbk]?|\b\d+(?:\.\d+)?%|\b(?:Q[1-4]|FY\d{2,4})\b", p["content"])
-        metric_str = ", ".join(list(dict.fromkeys(metrics_found))[:3]) if metrics_found else "Verified Passage"
-        table_rows.append(f"| `[Doc {p['id']}]` {p['title'][:28]} | {p['format'].upper()} | {p['relevance'] * 100:.1f}% | {metric_str} |")
+    def _cite(sentence: str, doc_id: int) -> str:
+        clean_s = sentence.strip()
+        if not clean_s.endswith((".", "!", "?")):
+            clean_s = clean_s + "."
+        return f"{clean_s} [{doc_id}]"
 
-    table_md = "\n".join(
-        ["| Grounded Source | Format | Relevance Match | Key Evidence Signals |", "| :--- | :--- | :--- | :--- |"]
-        + table_rows
-    )
+    lead_text = _cite(lead[4], lead[2])
+    if not details:
+        return f"### Direct Answer\n\n{lead_text}"
 
-    takeaways = []
-    for doc_id, title, s in all_sentences:
-        if (doc_id, title, s) not in core_sents and (doc_id, title, s) not in mechanism_items:
-            takeaways.append(f"- **{title} `[Doc {doc_id}]`**: {s}")
-        if len(takeaways) >= 3:
-            break
-
-    takeaways_md = "\n".join(takeaways) if takeaways else "- **Evidence Grounded**: All extractions verified directly from internal documents."
-
-    return f"""# 🔒 Executive Summary (Air-Gapped Private Analysis)
-
-> 🛡️ **Air-Gapped Privacy Verified**: This report was synthesized **100% locally** from your uploaded company files. Zero data, snippets, or prompts were sent to Google Gemini, Groq, or external clouds.
-> 💡 *Notice: No active local LLM responded cleanly, so the deterministic in-process RAG synthesizer was used. Start `ollama serve` (e.g., `llama3.2:latest`) for neural generation.*
-
-## 🎯 Core Concept & Definition
-{core_text}
-
-## ⚙️ How It Works & Structural Mechanisms
-{mechanism_md}
-
-## 📊 Cross-Document Evidence Comparison Table
-{table_md}
-
-## 💡 Key Architectural Insights & Evidence Provenance
-{takeaways_md}
-
-## ⚖️ Risk & Compliance Assessment
-* **Data Isolation**: 100% In-Process Memory Execution. External cloud network calls were strictly intercepted and disabled.
-* **PII & Token Sanitization**: Automated credential and email masking was applied to internal logs.
-* **Verification Status**: All insights cross-referenced directly against local grounded passages with 0% ungrounded hallucinations.
-
-## 🔒 Privacy Audit Trail
-* **Embedding Pipeline**: Local HuggingFace `all-MiniLM-L6-v2` running on your device.
-* **Index Storage**: Local FAISS vector index + Sparse BM25Okapi on local filesystem.
-* **External Egress**: **0 bytes transmitted outside localhost (127.0.0.1)**.
-"""
+    bullets = "\n".join(f"- {_cite(item[4], item[2])}" for item in details)
+    return f"### Direct Answer\n\n{lead_text}\n\n### Supporting Evidence\n\n{bullets}"

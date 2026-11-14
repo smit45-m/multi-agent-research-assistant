@@ -253,14 +253,16 @@ def build_architecture_diagrams(query: str) -> str:
     return "\n\n## 🗺️ Visual Architecture & Tensor-Flow Diagrams\n\n" + "\n\n".join(blocks) + "\n\n"
 
 
-def format_formulas_and_diagrams(report: str, query: str) -> str:
+def format_formulas_and_diagrams(report: str, query: str, include_diagrams: bool = True) -> str:
     """
     Post-processes the synthesized Markdown report so that:
     1. Raw/jammed LaTeX strings (`$$...$$,$$...$$` or `\\[...\\]`) are converted into clean,
        properly formatted Unicode formula blocks that never break in Markdown parsers.
     2. Bare LaTeX macros (`\\text{}`, `\\mathbf{}`, `\\frac{}{}`, `\\qquad`, etc.) anywhere in lines
        are converted to clean Unicode math.
-    3. Visual Architecture & Tensor-Flow Diagrams are guaranteed to be present for architectural queries.
+    3. Visual Architecture & Tensor-Flow Diagrams are added for open-ended architectural queries
+       (disabled when synthesizing strictly from retrieved evidence so unretrieved diagram labels
+       cannot degrade factual grounding).
     """
     if not report or not report.strip():
         return report
@@ -328,9 +330,9 @@ def format_formulas_and_diagrams(report: str, query: str) -> str:
             cleaned_lines.append(line)
     text = "\n".join(cleaned_lines)
 
-    # 5. Inject visual Architecture & Tensor-Flow Diagrams if not already present
+    # 5. Inject visual Architecture & Tensor-Flow Diagrams only when allowed and not already present
     has_diagram = "┌──" in text or "╔══" in text or "```mermaid" in text
-    if not has_diagram:
+    if include_diagrams and not has_diagram:
         diagrams_md = build_architecture_diagrams(query)
         if diagrams_md:
             if "## ⚙️" in text:

@@ -65,7 +65,7 @@ class SupervisorAgent:
         is_privacy = mode == "privacy" or state.get("options", {}).get("privacy_mode", False) or state.get("privacy_mode", False)
         if is_privacy:
             from app.utils.math_diagram_formatter import format_formulas_and_diagrams
-            formatted_draft = format_formulas_and_diagrams(draft, query)
+            formatted_draft = format_formulas_and_diagrams(draft, query, include_diagrams=False)
             state["final_report"] = formatted_draft
             elapsed_ms = round((time.perf_counter() - start) * 1000, 3)
             state["agent_telemetry"]["supervisor_time_ms"] = elapsed_ms
@@ -97,18 +97,22 @@ class SupervisorAgent:
         if mode == "research" and (len(draft) >= 500 or (has_table and has_equations)):
             jev_arbitration["winner_action"] = "accept_and_verify"
 
+        answer_origin = state.get("answer_origin", "")
+        has_grounded_sources = bool(docs or sources)
         should_invoke_llm = (
             jev_arbitration["winner_action"] == "elevate_llm_pass" and
             not state.get("offline") and
+            not has_grounded_sources and
             draft and
             not draft.startswith("## Not enough") and
-            state.get("answer_origin") not in ("insufficient_evidence", "llm_user_memory")
+            answer_origin not in ("insufficient_evidence", "llm_user_memory", "fallback_synthesis", "llm_grounded")
         )
 
         elevated = draft
         preserve_concise_private = (
-            draft.startswith("## Not enough")
-            or state.get("answer_origin") in ("insufficient_evidence", "llm_user_memory")
+            has_grounded_sources
+            or draft.startswith("## Not enough")
+            or answer_origin in ("insufficient_evidence", "llm_user_memory", "fallback_synthesis", "llm_grounded")
             or bool(state.get("route", {}).get("private_context") or state.get("routing_metadata", {}).get("private_context"))
             or (
                 bool(state.get("user_memory_context"))

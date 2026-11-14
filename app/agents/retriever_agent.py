@@ -27,18 +27,16 @@ class RetrieverAgent:
         questions = questions[:route.get("max_queries", 1)]
         candidates = list(state.get("retrieved_documents", []))
         actual = list(route.get("actual_retrieval", []))
+        is_privacy = state.get("mode") == "privacy" or bool(options.get("privacy_mode"))
         # User-supplied attachments are explicit context; sanitize prompt injection & PII before indexing.
-        from app.rag.privacy_guard import redact_pii
-        import re as _re
+        from app.rag.privacy_guard import sanitize_untrusted_text
+        attachment_ids = {str(att.get("id")) for att in state.get("attachments", []) if att.get("id")}
         for attachment in state.get("attachments", []):
             if filters and attachment["kind"] not in filters:
                 continue
-            raw_att_text = attachment.get("text", "")
-            clean_sentences = [
-                s for s in _re.split(r"(?<=[.!?])\s+", raw_att_text)
-                if not _re.search(r"(system override|ignore (all )?previous instructions|pwned_by_injection|leak admin)", s, _re.I)
-            ]
-            sanitized_att_text = redact_pii(" ".join(clean_sentences))
+            sanitized_att_text = sanitize_untrusted_text(attachment.get("text", ""), strip_pii=True)
+            if not sanitized_att_text:
+                continue
             candidates.append({"title": attachment["filename"], "content": sanitized_att_text,
                                "source": "attachment:" + attachment["id"], "source_type": attachment["kind"],
                                "relevance_score": 1.0, "user_supplied": True})
@@ -62,10 +60,13 @@ class RetrieverAgent:
                     # Directly inject into candidate pool as high-priority grounded evidence
                     for doc in crawled_chunks:
                         m = doc.metadata
+                        clean_nav = sanitize_untrusted_text(doc.page_content, strip_pii=is_privacy)
+                        if not clean_nav:
+                            continue
                         candidates.append({
                             "title": str(m.get("title", "Live Web Resource")),
                             "filename": str(m.get("url", m.get("source", "web"))),
-                            "content": doc.page_content,
+                            "content": clean_nav,
                             "source": str(m.get("url", m.get("source", "web"))),
                             "source_type": str(m.get("source_type", "web_traversal")),
                             "relevance_score": 1.0,
@@ -88,12 +89,20 @@ class RetrieverAgent:
                 actual.append(diagnostics.get("actual", "bm25"))
                 for doc in documents:
                     meta = doc.metadata
+                    doc_id = str(meta.get("document_id") or "")
+                    doc_src = str(meta.get("source", meta.get("source_path", "document")))
+                    # Avoid returning duplicate unredacted FAISS/upload copies of user-supplied attachments
+                    if attachment_ids and (doc_id in attachment_ids or any(aid in doc_src for aid in attachment_ids)):
+                        continue
+                    clean_content = sanitize_untrusted_text(doc.page_content, strip_pii=is_privacy)
+                    if not clean_content:
+                        continue
                     doc_filename = str(meta.get("filename") or "")
                     doc_title = str(meta.get("filename") or meta.get("title") or meta.get("source", "Document"))
                     candidates.append({"title": doc_title,
                                        "filename": doc_filename,
-                                       "content": doc.page_content,
-                                       "source": str(meta.get("source", meta.get("source_path", "document"))),
+                                       "content": clean_content,
+                                       "source": doc_src,
                                        "source_type": str(meta.get("format", "document")).lstrip("."),
                                        "relevance_score": float(meta.get("relevance_score", 0)),
                                        "dense_score": float(meta.get("dense_score", 0))})
@@ -164,9 +173,12 @@ class RetrieverAgent:
                                 category = result.get("source_type", "web")
                                 if filters and category not in filters:
                                     continue
-                                score = relevance(query, result.get("snippet", ""), result.get("title", ""))
+                                clean_snippet = sanitize_untrusted_text(result.get("snippet", ""), strip_pii=is_privacy)
+                                if not clean_snippet:
+                                    continue
+                                score = relevance(query, clean_snippet, result.get("title", ""))
                                 if score >= self.minimum:
-                                    relevant_local.append({"title": result.get("title", "Web source"), "content": result.get("snippet", ""),
+                                    relevant_local.append({"title": result.get("title", "Web source"), "content": clean_snippet,
                                                            "source": result.get("url", ""), "source_type": category, "relevance_score": score})
                         except Exception:
                             pass
@@ -182,9 +194,16 @@ class RetrieverAgent:
                 lex_rel = max((relevance(q, d["content"], d.get("title", "")) for q in questions), default=0.0)
                 d["relevance_score"] = max(lex_rel, 0.85 * float(d.get("dense_score", 0)))
         ordered = sorted(unique.values(), key=lambda d: d["relevance_score"], reverse=True)
-        if ordered and not any(d.get("user_supplied") for d in ordered):
-            best_rel = ordered[0]["relevance_score"]
-            ordered = [d for i, d in enumerate(ordered) if i == 0 or d["relevance_score"] >= 0.65 * best_rel]
+        has_supplied = any(d.get("user_supplied") for d in ordered)
+        non_supplied = [d for d in ordered if not d.get("user_supplied")]
+        if non_supplied:
+            best_rel = non_supplied[0]["relevance_score"]
+            min_keep = 0.72 * best_rel
+            if has_supplied:
+                non_supplied = [d for d in non_supplied if d["relevance_score"] >= max(0.45, min_keep)]
+            else:
+                non_supplied = [d for i, d in enumerate(non_supplied) if i == 0 or d["relevance_score"] >= min_keep]
+        ordered = [d for d in ordered if d.get("user_supplied")] + non_supplied
         chosen, counts = [], {}
         has_web_nav = any(d.get("source_type") in ("web_traversal", "leetcode_problem") for d in ordered)
         effective_cap = max(top_k, 14 if has_web_nav else top_k)

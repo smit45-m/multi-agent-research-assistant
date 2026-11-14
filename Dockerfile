@@ -36,10 +36,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder --chown=appuser:appuser /root/.local /home/appuser/.local
 COPY --from=builder --chown=appuser:appuser /root/.cache/huggingface /home/appuser/.cache/huggingface
 
-# Ensure local bin and HuggingFace cache are configured
+# Ensure local bin, HuggingFace cache, and single-node 2-vCPU thread limits are configured
 ENV PATH=/home/appuser/.local/bin:$PATH \
     HF_HOME=/home/appuser/.cache/huggingface \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    OMP_NUM_THREADS=2 \
+    MKL_NUM_THREADS=2 \
+    TOKENIZERS_PARALLELISM=false
 
 # Copy application code and ensure writable data directory
 COPY --chown=appuser:appuser . .
@@ -50,6 +53,6 @@ USER appuser
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
+  CMD curl -f http://localhost:8000/health/ready || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--timeout-keep-alive", "30", "--limit-concurrency", "64"]

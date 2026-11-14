@@ -49,9 +49,9 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_DECISION_MODEL: str = "gemini-decision-1"
     GEMINI_DECISIONS_API_URL: str = "https://generativelanguage.googleapis.com/v1beta/decisions"
-    GEMINI_MODEL_NAME: str = "gemini-flash-lite-latest"
+    GEMINI_MODEL_NAME: str = "gemini-3.5-flash-lite"
     GEMINI_FAST_MODEL: str = "gemini-flash-lite-latest"
-    GEMINI_RESEARCH_MODEL: str = "gemini-3.5-flash"
+    GEMINI_RESEARCH_MODEL: str = "gemini-flash-lite-latest"
 
     # Google Gemini Decision 1 (`gemini-decision-1`) & System-1 Decision Engine
     TYPESAFE_API_KEY: Optional[str] = None
@@ -61,8 +61,8 @@ class Settings(BaseSettings):
     JEV_MODEL_ID: str = "gemini-decision-1"
     JEV_ENDPOINT_URL: Optional[str] = None
     JEV_ENABLED: bool = True
-    FAST_MODE_MAX_OUTPUT_TOKENS: int = 500
-    FAST_MODE_SEARCH_TIMEOUT_SECONDS: float = 0.5
+    FAST_MODE_MAX_OUTPUT_TOKENS: int = 800
+    FAST_MODE_SEARCH_TIMEOUT_SECONDS: float = 3.0
 
     # Local Open-Source LLM & Privacy Configuration (Air-Gapped)
     LOCAL_LLM_URL: str = "http://127.0.0.1:11434"
