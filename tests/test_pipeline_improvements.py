@@ -181,6 +181,36 @@ def test_planner_anchors_pronoun_subquestions_and_fast_searches_empty_store():
     assert stub_search.called >= 1
     assert len(out["retrieved_documents"]) == 1
 
+    # Also exercise research-mode partial-local-hit branch (checks missing unstemmed words with re)
+    class PartialHybrid:
+        last_diagnostics = {"actual": "hybrid", "warnings": []}
+
+        def retrieve(self, question, rag_mode, top_k, filters):
+            return [
+                Document(
+                    page_content="Lithium-ion cells transfer ions between electrodes.",
+                    metadata={"source": "notes.txt", "title": "Battery Notes", "relevance_score": 0.45, "format": "txt"},
+                )
+            ]
+
+    ret_res = RetrieverAgent(vector_store=object(), search_tool=stub_search)
+    ret_res.hybrid_retriever = PartialHybrid()
+    res_q = "How do lithium-ion batteries differ from solid-state sodium cells in cycling stability?"
+    res_route = ResearchRouter().execution_plan(res_q, mode="research", corpus_size=1)
+    res_out = ret_res.retrieve({
+        "query": res_q,
+        "sub_questions": [res_q],
+        "mode": "research",
+        "rag_mode": "hybrid",
+        "web_search": True,
+        "max_sources": 5,
+        "routing_metadata": res_route,
+        "warnings": [],
+        "agent_telemetry": {"retriever_time_ms": 0.0, "retrieval_rounds": 0},
+        "options": {"web_search": True},
+    })
+    assert "web_search" in res_out["routing_metadata"]["actual_retrieval"]
+
 
 def test_writer_normalizes_openai_citations_and_aligns_snippet_len():
     class OAIStyleLLM:

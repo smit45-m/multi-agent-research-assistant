@@ -1,4 +1,5 @@
 """Retrieve relevant evidence, preserve provenance, reject unrelated results."""
+import re
 import time
 from app.config import get_settings
 from app.rag.hybrid_retriever import HybridRetriever, source_allowed
