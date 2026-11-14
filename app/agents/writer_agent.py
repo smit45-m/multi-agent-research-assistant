@@ -492,13 +492,13 @@ class WriterAgent:
             )
 
             fast_educator_grounded_style = (
-                "Provide a fast, structured, textbook-grade technical answer (450-850 words) that directly and completely answers EVERY part of the user's question. "
-                "Ground definitions and examples from the supplied passages with inline [1], [2] citations, AND provide the complete mathematical equations (with every variable defined) and concrete numerical examples for all requested concepts or methods (even if the retrieved lecture slides only list slide titles or brief bullets). "
-                "Follow a clean hierarchy (`# Main Topic`, `## 🎯 Core Concepts & Definitions`, `## 📐 Mathematical Equations & Formulations`, `## 💡 Concrete Worked Examples`, `## 📊 Summary Comparison Table`)."
+                "Provide a fast, crisp, textbook-grade technical answer (240-380 words MAX) that directly answers EVERY part of the user's question within a <5s latency budget. "
+                "Ground definitions and facts from the supplied passages with inline [1], [2] citations, AND state the exact mathematical formulas (with brief variable definitions) and 1 compact numerical worked example for the requested concepts or methods. "
+                "Use a clean hierarchy (`# Main Topic`, `## 🎯 Core Concepts`, `## 📐 Mathematical Formulas & Variables`, `## 💡 Worked Example & Summary Table`). Keep explanations tight and high-signal so the response completes under 5 seconds."
             )
 
             balanced_educator_grounded_style = (
-                "Provide a comprehensive, example-driven explanation (700-1,200 words) following the expert teacher standard: "
+                "Provide a comprehensive, example-driven explanation (650-1,100 words) following the expert teacher standard: "
                 "1) 🎯 Core Idea & Definitions grounded in [1], [2], "
                 "2) 📐 Complete Mathematical Equations & Variable Definitions for every requested concept or method, "
                 "3) 💡 Step-by-Step Numerical Worked Examples (incorporating examples from [1], [2] plus full calculations), "
@@ -508,15 +508,15 @@ class WriterAgent:
 
             lengths = {
                 "fast": (
-                    1800 if needs_educator_expansion else 1000,
+                    900 if needs_educator_expansion else 750,
                     (fast_educator_grounded_style if needs_educator_expansion else fast_grounded_style) if docs else (
-                        "Provide a fast, ultra-crisp, highly-structured technical answer (260-480 words). "
-                        "Directly and completely address EVERY part of the user question, including key formulas, defined variables, and concrete examples. "
+                        "Provide a fast, ultra-crisp, highly-structured technical answer (220-360 words). "
+                        "Directly and completely address EVERY part of the user question, including key formulas, defined variables, and a concrete example. "
                         "Follow a clean hierarchy (`# Main Topic`, `## Direct Answer`, `## How It Works & Equations`, compact table if helpful, `## Key Takeaways`)."
                     ),
                 ),
                 "balanced": (
-                    2600,
+                    2200,
                     (balanced_educator_grounded_style if needs_educator_expansion else balanced_grounded_style) if docs else (
                         "Provide an in-depth, example-driven explanation (550-850 words) following the expert teacher standard: "
                         "1) Core Idea & Direct Answer, 2) Step-by-Step Mechanisms & Equations, 3) Concrete Worked Walkthrough, "
@@ -524,7 +524,7 @@ class WriterAgent:
                     ),
                 ),
                 "research": (
-                    4096 if needs_educator_expansion else (2400 if docs else 4096),
+                    3200 if needs_educator_expansion else (2400 if docs else 3400),
                     (research_educator_grounded_style if needs_educator_expansion else research_grounded_style)
                     if docs else (research_technical_style if is_technical_or_deep else research_general_style),
                 ),
@@ -578,13 +578,15 @@ class WriterAgent:
             else:
                 policy = "No retrieved evidence is available. Provide a helpful, accurate, well-structured explanation with pointwise details, mathematical formulas, and concrete examples from foundational knowledge. Do NOT invent fake [1] citations or claim to have retrieved unsupplied documents."
 
+            ev_docs = docs[:4] if mode in ("fast", "quick") else docs
+            ev_char_limit = min(per_src_limit, 1000) if mode in ("fast", "quick") else per_src_limit
             evidence = [
                 {
                     "id": i + 1,
                     "title": d.get("title"),
-                    "text": sanitize_untrusted_text(d["content"][:per_src_limit]),
+                    "text": sanitize_untrusted_text(d["content"][:ev_char_limit]),
                 }
-                for i, d in enumerate(docs)
+                for i, d in enumerate(ev_docs)
             ]
             raw_analysis = state.get("analysis", {}) or {}
             compact_analysis = {
@@ -605,7 +607,14 @@ class WriterAgent:
             if user_mem_ctx and (is_memory_query or relevance(query, user_mem_ctx) >= 0.15):
                 prompt_payload["personalized_user_memory"] = sanitize_untrusted_text(user_mem_ctx[:1500])
             prompt = json.dumps(prompt_payload, ensure_ascii=False)
-            active_system = SYSTEM if (needs_educator_expansion or (not docs and not is_memory_query)) else SYSTEM_GROUNDED
+            if mode in ("fast", "quick") and needs_educator_expansion:
+                active_system = (
+                    "You are a fast, rigorous technical educator (<5s SLA). "
+                    "Answer the user's question directly and completely in 220-360 words using clean Markdown headings (`# ...`, `## ...`). "
+                    "Ground factual claims in `evidence` with inline `[1]`, `[2]` citations, and include exact mathematical formulas (`$$...$$`), brief variable definitions, and 1 concise numerical example for every requested concept or method."
+                )
+            else:
+                active_system = SYSTEM if (needs_educator_expansion or (not docs and not is_memory_query)) else SYSTEM_GROUNDED
             on_token = getattr(self, "on_token", None) or state.get("on_token") or state.get("options", {}).get("on_token")
             try:
                 if on_token is not None and hasattr(self.llm, "stream_complete"):

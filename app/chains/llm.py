@@ -218,11 +218,11 @@ class BoundedLLM:
 
                 def _call_gemini(timeout_sec):
                     if self.mode in ("fast", "quick"):
-                        output_tokens = max(min(max_tokens, 2400), 1200)
+                        output_tokens = min(max(max_tokens, 600), 1000)
                     elif self.mode in ("research", "deep"):
-                        output_tokens = max(min(max_tokens, 4096), 2400)
+                        output_tokens = min(max(max_tokens, 2400), 3400)
                     else:
-                        output_tokens = max(min(max_tokens, 3600), 2000)
+                        output_tokens = min(max(max_tokens, 1600), 2600)
 
                     candidate_models = _gemini_pool(self.mode)
                     headers = {
@@ -355,7 +355,11 @@ class BoundedLLM:
         for model_name in candidate_models:
             streamed_any = False
             try:
-                stream_max_tokens = 2400 if self.mode in ("fast", "quick") else max(max_tokens, 4096)
+                stream_max_tokens = (
+                    min(max(max_tokens, 600), 1000)
+                    if self.mode in ("fast", "quick")
+                    else min(max(max_tokens, 2400), 3400)
+                )
                 gen_cfg = {
                     "temperature": 0.2,
                     "maxOutputTokens": stream_max_tokens,

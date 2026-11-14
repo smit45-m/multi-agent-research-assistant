@@ -54,23 +54,27 @@ class RetrieverAgent:
             for idx_att, attachment in enumerate(raw_attachments):
                 if filters and attachment["kind"] not in filters:
                     continue
-                sanitized_att_text = sanitize_untrusted_text(attachment.get("text", ""), strip_pii=True)
-                if not sanitized_att_text:
+                raw_att_text = (attachment.get("text") or "").strip()
+                if not raw_att_text:
                     continue
                 att_entry = {
                     "title": attachment["filename"],
                     "filename": attachment["filename"],
-                    "content": sanitized_att_text,
                     "source": "attachment:" + str(attachment["id"]),
                     "source_type": attachment["kind"],
                     "format": attachment["kind"],
-                    "relevance_score": max((relevance(q, sanitized_att_text, attachment["filename"]) for q in questions), default=0.0),
                     "from_attachment": True,
                     "att_idx": idx_att,
                 }
                 if idx_att < 3:
-                    fallback_attachment_candidates.append(att_entry)
-                att_docs.append(Document(page_content=sanitized_att_text, metadata=att_entry))
+                    sanitized_fb = sanitize_untrusted_text(raw_att_text, strip_pii=True)
+                    if sanitized_fb:
+                        fallback_attachment_candidates.append({
+                            **att_entry,
+                            "content": sanitized_fb,
+                            "relevance_score": max((relevance(q, sanitized_fb, attachment["filename"]) for q in questions), default=0.0),
+                        })
+                att_docs.append(Document(page_content=raw_att_text, metadata=att_entry))
             if att_docs:
                 class _AttStore:
                     dense_available = False
@@ -78,7 +82,8 @@ class RetrieverAgent:
                     def get_all_documents(self):
                         return att_docs
                 att_hr = HybridRetriever(_AttStore())
-                att_queries = list(dict.fromkeys([query, *questions]))[:4]
+                is_fast_mode = state.get("mode") in ("fast", "quick")
+                att_queries = [query] if is_fast_mode else list(dict.fromkeys([query, *questions]))[:4]
                 seen_att_indices = set()
                 for q_att in att_queries:
                     for d_hit in att_hr.retrieve(q_att, mode="hybrid", top_k=top_k, source_filters=filters):
@@ -96,7 +101,10 @@ class RetrieverAgent:
                                     nxt_txt = att_docs[nxt_i].page_content
                                     if len(merged_text) + len(nxt_txt) <= 2200:
                                         merged_text = f"{merged_text}\n\n{nxt_txt}"
-                        m_hit["content"] = merged_text
+                        sanitized_hit = sanitize_untrusted_text(merged_text, strip_pii=True)
+                        if not sanitized_hit:
+                            continue
+                        m_hit["content"] = sanitized_hit
                         m_hit["from_attachment"] = True
                         m_hit["relevance_score"] = max(float(m_hit.get("relevance_score", 0.0)), 0.32)
                         candidates.append(m_hit)

@@ -53,7 +53,11 @@ def get_user_vector_store(db_name: str) -> VectorStoreManager:
         store = VectorStoreManager(persist_directory=str(vs_dir), embeddings=emb)
         store.initialize()
         if emb is not None:
-            store.prepare_dense()
+            has_persisted_faiss = (vs_dir / "faiss_index" / "index.faiss").exists()
+            if has_persisted_faiss or store.get_document_count() <= 20:
+                store.prepare_dense()
+            else:
+                threading.Thread(target=store.prepare_dense, daemon=True).start()
         _USER_VECTOR_STORES[db_name] = store
         return store
 

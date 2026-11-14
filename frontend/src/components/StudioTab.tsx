@@ -133,6 +133,87 @@ export function StudioTab({
   const lock = useRef(false);
 
   const uploadedDocCache = useRef<Map<string, string>>(new Map());
+  const uploadPromisesRef = useRef<Map<string, Promise<string | null>>>(new Map());
+  const [fileStatusMap, setFileStatusMap] = useState<Record<string, 'uploading' | 'ready' | 'error'>>({});
+
+  function getFileCacheKey(file: File): string {
+    const scopePrefix = currentUser?.id || 'guest';
+    return `${scopePrefix}:${file.name}_${file.size}`;
+  }
+
+  function resolveOrUploadFile(file: File, signal?: AbortSignal): Promise<string | null> {
+    const fileKey = getFileCacheKey(file);
+    const storageCached = (() => {
+      try {
+        return sessionStorage.getItem(`scholar_doc_${fileKey}`) || localStorage.getItem(`scholar_doc_${fileKey}`);
+      } catch {
+        return null;
+      }
+    })();
+    if (uploadedDocCache.current.has(fileKey) || storageCached) {
+      const resolvedId = uploadedDocCache.current.get(fileKey) || storageCached!;
+      uploadedDocCache.current.set(fileKey, resolvedId);
+      setFileStatusMap(prev => (prev[fileKey] === 'ready' ? prev : { ...prev, [fileKey]: 'ready' }));
+      return Promise.resolve(resolvedId);
+    }
+
+    const existingPromise = uploadPromisesRef.current.get(fileKey);
+    if (existingPromise) {
+      return existingPromise;
+    }
+
+    setFileStatusMap(prev => ({ ...prev, [fileKey]: 'uploading' }));
+    const promise = (async (): Promise<string | null> => {
+      try {
+        try {
+          const listRes = await api<{ documents: DocumentResponse[] }>('/api/v1/documents/', { signal });
+          const serverDocs = listRes?.documents || [];
+          const matchingServerDoc = serverDocs.find(
+            d => d.filename === file.name && d.chunk_count > 0 && (!d.size_bytes || d.size_bytes === file.size)
+          );
+          if (matchingServerDoc?.document_id) {
+            uploadedDocCache.current.set(fileKey, matchingServerDoc.document_id);
+            try {
+              sessionStorage.setItem(`scholar_doc_${fileKey}`, matchingServerDoc.document_id);
+              localStorage.setItem(`scholar_doc_${fileKey}`, matchingServerDoc.document_id);
+            } catch { /* ignore */ }
+            setFileStatusMap(prev => ({ ...prev, [fileKey]: 'ready' }));
+            return matchingServerDoc.document_id;
+          }
+        } catch {
+          // Proceed to upload if list check fails
+        }
+
+        const form = new FormData();
+        form.append('file', file);
+        form.append('privacy_mode', String(speedMode === 'privacy'));
+        const upRes = await api<DocumentResponse>('/api/v1/documents/upload', {
+          method: 'POST',
+          body: form,
+          signal,
+        });
+        if (upRes?.document_id) {
+          uploadedDocCache.current.set(fileKey, upRes.document_id);
+          try {
+            sessionStorage.setItem(`scholar_doc_${fileKey}`, upRes.document_id);
+            localStorage.setItem(`scholar_doc_${fileKey}`, upRes.document_id);
+          } catch { /* ignore */ }
+          setFileStatusMap(prev => ({ ...prev, [fileKey]: 'ready' }));
+          return upRes.document_id;
+        }
+        setFileStatusMap(prev => ({ ...prev, [fileKey]: 'error' }));
+        return null;
+      } catch (err) {
+        setFileStatusMap(prev => ({ ...prev, [fileKey]: 'error' }));
+        throw err;
+      } finally {
+        uploadPromisesRef.current.delete(fileKey);
+      }
+    })();
+
+    uploadPromisesRef.current.set(fileKey, promise);
+    return promise;
+  }
 
   const refreshLocalModels = async () => {
     setLoadingLocalModels(true);
@@ -152,7 +233,12 @@ export function StudioTab({
     }
   }, [speedMode]);
 
-  useEffect(() => { if (resetKey) textarea.current?.focus(); }, [resetKey]);
+  useEffect(() => {
+    if (resetKey) {
+      setAttachedFiles([]);
+      textarea.current?.focus();
+    }
+  }, [resetKey]);
   useEffect(() => () => { controller.current?.abort(); if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
 
   const reportHtml = useMemo(() => {
@@ -176,7 +262,12 @@ export function StudioTab({
     if (!files || !files.length) return;
     const list = Array.from(files);
     setAttachedFiles(prev => [...prev, ...list]);
-    onShowToast(`Attached ${list.length} file${list.length > 1 ? 's' : ''}`);
+    for (const file of list) {
+      void resolveOrUploadFile(file).catch(err => {
+        console.warn(`Background pre-upload failed for ${file.name}:`, err);
+      });
+    }
+    onShowToast(`Attached ${list.length} file${list.length > 1 ? 's' : ''} — indexing in background`);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -199,94 +290,37 @@ export function StudioTab({
     setElapsed(0);
     const abort = new AbortController();
     controller.current = abort;
-    let started = Date.now();
+    const started = Date.now();
     const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
     const timeoutMs = speedMode === 'fast' ? 60_000 : 240_000;
     let timeout: ReturnType<typeof setTimeout> | undefined;
 
     try {
-      // If user attached files directly, check local/session cache + already-indexed server docs before uploading
+      // Resolve attached files (reusing pre-uploaded/already-indexed document_id in 0ms when ready)
       const uploadedAttachmentIds: string[] = [];
       if (attachedFiles.length > 0) {
-        let serverIndexedDocs: DocumentResponse[] | null = null;
-        const remainingFiles: File[] = [];
         for (const file of attachedFiles) {
-          const scopePrefix = currentUser?.id || 'guest';
-          const fileKey = `${scopePrefix}:${file.name}_${file.size}_${file.lastModified}`;
-          const storageCached = (() => {
-            try {
-              return sessionStorage.getItem(`scholar_doc_${fileKey}`) || localStorage.getItem(`scholar_doc_${fileKey}`);
-            } catch {
-              return null;
-            }
-          })();
-          if (uploadedDocCache.current.has(fileKey) || storageCached) {
-            const resolvedId = uploadedDocCache.current.get(fileKey) || storageCached!;
-            uploadedDocCache.current.set(fileKey, resolvedId);
-            uploadedAttachmentIds.push(resolvedId);
-            continue;
-          }
-
-          // Check server-side already-indexed documents (<1KB metadata check) to avoid re-uploading 15MB+ PDFs
-          if (serverIndexedDocs === null) {
-            try {
-              const listRes = await api<{ documents: DocumentResponse[] }>('/api/v1/documents/', {
-                signal: abort.signal,
-              });
-              serverIndexedDocs = listRes?.documents || [];
-            } catch {
-              serverIndexedDocs = [];
-            }
-          }
-          const matchingServerDoc = serverIndexedDocs.find(
-            d => d.filename === file.name && d.chunk_count > 0 && (!d.size_bytes || d.size_bytes === file.size)
-          );
-          if (matchingServerDoc?.document_id) {
-            uploadedDocCache.current.set(fileKey, matchingServerDoc.document_id);
-            try {
-              sessionStorage.setItem(`scholar_doc_${fileKey}`, matchingServerDoc.document_id);
-              localStorage.setItem(`scholar_doc_${fileKey}`, matchingServerDoc.document_id);
-            } catch { /* ignore */ }
-            uploadedAttachmentIds.push(matchingServerDoc.document_id);
-            continue;
-          }
-
-          const form = new FormData();
-          form.append('file', file);
-          form.append('privacy_mode', String(speedMode === 'privacy'));
           const uploadTimeout = setTimeout(() => abort.abort('upload_timeout'), 180_000);
           try {
-            setStageMessage(`Parsing & indexing attachment: ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)...`);
-            const upRes = await api<DocumentResponse>('/api/v1/documents/upload', {
-              method: 'POST',
-              body: form,
-              signal: abort.signal,
-            });
-            if (upRes?.document_id) {
-              uploadedDocCache.current.set(fileKey, upRes.document_id);
-              try {
-                sessionStorage.setItem(`scholar_doc_${fileKey}`, upRes.document_id);
-                localStorage.setItem(`scholar_doc_${fileKey}`, upRes.document_id);
-              } catch { /* ignore */ }
-              uploadedAttachmentIds.push(upRes.document_id);
+            const fileKey = getFileCacheKey(file);
+            if (!uploadedDocCache.current.has(fileKey)) {
+              setStageMessage(`Indexing attachment: ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)...`);
+            }
+            const docId = await resolveOrUploadFile(file, abort.signal);
+            if (docId) {
+              uploadedAttachmentIds.push(docId);
             }
           } catch (uploadErr) {
             if ((uploadErr as { status?: number })?.status === 401 || abort.signal.aborted) {
-              remainingFiles.push(file);
               throw uploadErr;
             }
-            remainingFiles.push(file);
             console.warn(`File upload skipped for ${file.name}:`, uploadErr);
           } finally {
             clearTimeout(uploadTimeout);
           }
         }
-        setAttachedFiles(remainingFiles);
       }
 
-      // Reset research timer and start research timeout AFTER any attachment upload finishes
-      started = Date.now();
-      setElapsed(0);
       timeout = setTimeout(() => abort.abort('timeout'), timeoutMs);
 
       setStreamingReport('');
@@ -616,16 +650,22 @@ export function StudioTab({
 
             {attachedFiles.length > 0 && (
               <div className="attachment-chips">
-                {attachedFiles.map((file, idx) => (
-                  <span key={`${file.name}-${idx}`} className="attachment-chip">
-                    <Paperclip size={12} />
-                    <span>{file.name}</span>
-                    <small>({(file.size / 1024).toFixed(0)} KB)</small>
-                    <button type="button" onClick={() => removeAttachment(idx)} aria-label="Remove attachment">
-                      <X size={12} />
-                    </button>
-                  </span>
-                ))}
+                {attachedFiles.map((file, idx) => {
+                  const fKey = getFileCacheKey(file);
+                  const st = fileStatusMap[fKey];
+                  return (
+                    <span key={`${file.name}-${idx}`} className="attachment-chip">
+                      <Paperclip size={12} />
+                      <span>{file.name}</span>
+                      <small>
+                        ({(file.size / 1024).toFixed(0)} KB · {st === 'ready' ? '✓ Indexed' : st === 'uploading' ? '⏳ Indexing...' : 'Attached'})
+                      </small>
+                      <button type="button" onClick={() => removeAttachment(idx)} aria-label="Remove attachment">
+                        <X size={12} />
+                      </button>
+                    </span>
+                  );
+                })}
               </div>
             )}
 

@@ -65,41 +65,51 @@ class VectorStoreManager:
             return self.embedding_status == "ready"
 
     def _rebuild_dense(self, force: bool = False):
-        if self.embeddings_model is None or not self._documents:
-            self.vector_store = None
-            return
+        with self._lock:
+            if self.embeddings_model is None or not self._documents:
+                self.vector_store = None
+                return
+            docs_snapshot = list(self._documents.values())
+            ids_snapshot = list(self._documents.keys())
+            persist_dir = self.persist_directory
+            emb_model = self.embeddings_model
+
         try:
             from langchain_community.vectorstores import FAISS
-            faiss_dir = Path(self.persist_directory) / "faiss_index"
+            faiss_dir = Path(persist_dir) / "faiss_index"
             if not force and faiss_dir.exists() and (faiss_dir / "index.faiss").exists():
                 try:
                     candidate = FAISS.load_local(
-                        str(faiss_dir), self.embeddings_model, allow_dangerous_deserialization=True
+                        str(faiss_dir), emb_model, allow_dangerous_deserialization=True
                     )
                     indexed_ids = set(getattr(candidate, "index_to_docstore_id", {}).values())
-                    if indexed_ids == set(self._documents):
-                        self.vector_store = candidate
-                        self.embedding_status = "ready"
+                    if indexed_ids == set(ids_snapshot):
+                        with self._lock:
+                            self.vector_store = candidate
+                            self.embedding_status = "ready"
                         return
                 except Exception:
                     pass
 
-            self.vector_store = FAISS.from_documents(
-                list(self._documents.values()), self.embeddings_model,
-                ids=list(self._documents), normalize_L2=True)
-            self.embedding_status = "ready"
+            built = FAISS.from_documents(
+                docs_snapshot, emb_model,
+                ids=ids_snapshot, normalize_L2=True)
+            with self._lock:
+                self.vector_store = built
+                self.embedding_status = "ready"
             try:
-                self.vector_store.save_local(str(faiss_dir))
+                built.save_local(str(faiss_dir))
             except Exception:
                 pass
         except Exception:
-            self.vector_store = None
-            self.embedding_status = "unavailable"
-            warning = "Semantic indexing failed; uploaded text is preserved and keyword retrieval remains available."
-            if warning not in self.warnings:
-                self.warnings.append(warning)
+            with self._lock:
+                self.vector_store = None
+                self.embedding_status = "unavailable"
+                warning = "Semantic indexing failed; uploaded text is preserved and keyword retrieval remains available."
+                if warning not in self.warnings:
+                    self.warnings.append(warning)
 
-    def add_documents(self, documents):
+    def add_documents(self, documents, background_dense: bool = False):
         if not documents:
             return []
         with self._lock:
@@ -111,17 +121,23 @@ class VectorStoreManager:
                 self._documents[identifier] = Document(page_content=doc.page_content, metadata=dict(doc.metadata))
                 ids.append(identifier)
             self.version += 1
-            if self.embeddings_model is not None:
-                if self.vector_store is not None:
-                    try:
-                        new_docs = [self._documents[i] for i in ids]
-                        self.vector_store.add_documents(new_docs, ids=ids)
-                        self.embedding_status = "ready"
-                    except Exception:
+            has_emb = self.embeddings_model is not None
+
+        if has_emb and ids:
+            if background_dense or len(ids) > 20:
+                threading.Thread(target=self._rebuild_dense, kwargs={"force": True}, daemon=True).start()
+            else:
+                with self._lock:
+                    if self.vector_store is not None:
+                        try:
+                            new_docs = [self._documents[i] for i in ids]
+                            self.vector_store.add_documents(new_docs, ids=ids)
+                            self.embedding_status = "ready"
+                        except Exception:
+                            self._rebuild_dense(force=True)
+                    else:
                         self._rebuild_dense(force=True)
-                else:
-                    self._rebuild_dense(force=True)
-            return ids
+        return ids
 
     def get_all_documents(self):
         with self._lock:
