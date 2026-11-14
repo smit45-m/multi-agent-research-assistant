@@ -5,6 +5,30 @@ from app.chains.llm import call_model
 from app.rag.relevance import tokens
 
 
+def _raw_anchor_terms(text: str, limit: int = 3) -> str:
+    """Extracts up to `limit` unstemmed topical words to preserve entity names in split sub-queries."""
+    from app.rag.relevance import STOPWORDS
+    words = [
+        w for w in re.findall(r"[A-Za-z0-9][A-Za-z0-9._-]*", text)
+        if len(w) > 1 and w.lower() not in STOPWORDS and w.lower() not in {"what", "how", "why", "when", "where", "which", "explain", "describe", "compare"}
+    ]
+    return " ".join(words[:limit])
+
+
+def _anchor_subquestion(part: str, anchor: str) -> str:
+    """Anchors a split clause containing dangling pronouns or auxiliaries to the main subject."""
+    cleaned = part.strip(" ,;.")
+    if not cleaned:
+        return ""
+    needs_anchor = bool(
+        re.match(r"^(?:is|are|was|were|does|do|did|can|could|should|how|what|why)\s+(?:it|they|this|that)\b", cleaned, re.I)
+        or re.search(r"\b(?:it|they|them|this|that|its|their)\b", cleaned, re.I)
+    )
+    if needs_anchor and anchor and not (set(tokens(anchor)) & set(tokens(cleaned))):
+        cleaned = f"{anchor} {cleaned}"
+    return cleaned
+
+
 class PlannerAgent:
     def __init__(self, llm=None):
         self.llm = llm
@@ -43,13 +67,16 @@ class PlannerAgent:
             else:
                 method = "gemini_decision_1_fast_plan"
         if limit > 1 and len(sub_questions) == 1:
-            # Split compound questions on ?, ;, newlines, or explicit multi-topic conjunctions (" AND ", " as well as ", commas)
-            parts = [part.strip() for part in re.split(r"[?;\n]+|\bAND\s+WHAT\s+ARE\b|\bAND\s+EXPLAIN\b|\bAND\s+HOW\b|\balso\s+explain\b", query, flags=re.I) if len(tokens(part)) >= 2]
+            # Split compound questions on ?, ;, newlines, or explicit multi-topic conjunctions
+            parts = [part.strip(" ,;.") for part in re.split(r"[?;\n]+|\bAND\s+WHAT\s+ARE\b|\bAND\s+EXPLAIN\b|\bAND\s+HOW\b|\balso\s+explain\b", query, flags=re.I) if len(tokens(part)) >= 2]
             if len(parts) == 1 and "," in query:
                 comma_parts = [p.strip() for p in re.split(r",|\band\b", query, flags=re.I) if p.strip()]
                 if len(comma_parts) >= 3:
                     parts = [comma_parts[0], " ".join(comma_parts[1:])]
-            sub_questions.extend(parts if len(parts) > 1 else [])
+            if len(parts) > 1:
+                anchor = _raw_anchor_terms(parts[0], 3)
+                anchored = [_anchor_subquestion(p, anchor) for p in parts]
+                sub_questions.extend(q for q in anchored if len(tokens(q)) >= 2)
         # Contextual follow-up expansion using this user's private short-term memory
         mem_meta = state.get("user_memory_meta") or {}
         latest_topic = str(mem_meta.get("latest_topic") or "").strip()

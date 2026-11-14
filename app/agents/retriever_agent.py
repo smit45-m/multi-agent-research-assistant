@@ -145,12 +145,14 @@ class RetrieverAgent:
             "latency_ms": jev_search_decision.latency_ms
         }
 
-        should_search = permitted_web and (jev_search_decision.value or (state.get("mode") != "fast" and term_coverage < 0.70))
+        should_search = permitted_web and (jev_search_decision.value or not relevant_local or (state.get("mode") != "fast" and term_coverage < 0.70))
         if should_search:
             search_questions = list(questions[:3 if state.get("mode") == "research" else 1])
-            missing_terms = [t for t in q_terms if t not in covered_terms]
-            if missing_terms and len(search_questions) < 3:
-                search_questions.append(" ".join(missing_terms[:5]))
+            if relevant_local and state.get("mode") == "research" and len(search_questions) < 3:
+                raw_q_words = [w for w in re.findall(r"[A-Za-z0-9][A-Za-z0-9._-]*", query) if len(w) >= 4]
+                missing_raw = [w for w in raw_q_words if w.lower() not in local_blob]
+                if missing_raw:
+                    search_questions.append(" ".join(missing_raw[:5]))
             remaining = state.get("deadline", float("inf")) - time.monotonic() - 3
             if remaining > 1.0 and search_questions:
                 import concurrent.futures
@@ -195,14 +197,16 @@ class RetrieverAgent:
                 d["relevance_score"] = max(lex_rel, 0.85 * float(d.get("dense_score", 0)))
         ordered = sorted(unique.values(), key=lambda d: d["relevance_score"], reverse=True)
         has_supplied = any(d.get("user_supplied") for d in ordered)
-        non_supplied = [d for d in ordered if not d.get("user_supplied")]
+        non_supplied = sorted([d for d in ordered if not d.get("user_supplied")], key=lambda d: d["relevance_score"], reverse=True)
         if non_supplied:
             best_rel = non_supplied[0]["relevance_score"]
-            min_keep = 0.72 * best_rel
+            rel_ratio = 0.56 if (len(questions) > 1 or state.get("mode") == "research") else 0.65
+            min_keep = rel_ratio * best_rel
             if has_supplied:
-                non_supplied = [d for d in non_supplied if d["relevance_score"] >= max(0.45, min_keep)]
+                non_supplied = [d for d in non_supplied if d["relevance_score"] >= max(0.42, min_keep)]
             else:
-                non_supplied = [d for i, d in enumerate(non_supplied) if i == 0 or d["relevance_score"] >= min_keep]
+                floor = max(0.26, min_keep)
+                non_supplied = [d for i, d in enumerate(non_supplied) if i == 0 or d["relevance_score"] >= floor]
         ordered = [d for d in ordered if d.get("user_supplied")] + non_supplied
         chosen, counts = [], {}
         has_web_nav = any(d.get("source_type") in ("web_traversal", "leetcode_problem") for d in ordered)

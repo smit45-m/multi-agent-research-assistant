@@ -133,3 +133,79 @@ def test_formatter_skips_ungrounded_diagrams_when_disabled():
     formatted = format_formulas_and_diagrams(text, "Explain transformer self attention", include_diagrams=False)
     assert "Multi-Head" not in formatted
     assert "Architecture Diagram" not in formatted
+
+
+def test_planner_anchors_pronoun_subquestions_and_fast_searches_empty_store():
+    from app.agents.planner_agent import PlannerAgent
+    from app.chains.router import ResearchRouter
+
+    q = "What is the Raft consensus algorithm, how does leader election work, and how is it compared to Paxos?"
+    route = ResearchRouter().execution_plan(q, mode="research", corpus_size=0)
+    plan_state = PlannerAgent().plan({"query": q, "mode": "research", "routing_metadata": route, "agent_telemetry": {"planner_time_ms": 0.0}})
+    for sub in plan_state["sub_questions"][1:]:
+        if "paxos" in sub.lower():
+            assert "raft" in sub.lower()
+
+    class StubSearch:
+        called = 0
+
+        def search(self, query, max_results=3, timeout=3.0):
+            self.called += 1
+            return [{"title": "Batteries", "url": "https://en.wikipedia.org/wiki/Lithium-ion_battery", "snippet": "Lithium-ion batteries move ions between cathode and anode.", "source_type": "wikipedia"}]
+
+    class EmptyVS:
+        version = 1
+
+        def get_document_count(self):
+            return 0
+
+        def get_all_documents(self):
+            return []
+
+    stub_search = StubSearch()
+    ret = RetrieverAgent(vector_store=EmptyVS(), search_tool=stub_search)
+    fast_q = "How do lithium-ion batteries store energy?"
+    fast_route = ResearchRouter().execution_plan(fast_q, mode="fast", corpus_size=0)
+    out = ret.retrieve({
+        "query": fast_q,
+        "sub_questions": [fast_q],
+        "mode": "fast",
+        "rag_mode": "hybrid",
+        "web_search": True,
+        "max_sources": 3,
+        "routing_metadata": fast_route,
+        "warnings": [],
+        "agent_telemetry": {"retriever_time_ms": 0.0, "retrieval_rounds": 0},
+        "options": {"web_search": True},
+    })
+    assert stub_search.called >= 1
+    assert len(out["retrieved_documents"]) == 1
+
+
+def test_writer_normalizes_openai_citations_and_aligns_snippet_len():
+    class OAIStyleLLM:
+        model = "openai/gpt-oss-120b"
+
+        def complete(self, system, prompt, max_tokens=None):
+            return "### Direct Answer\n\nFlashAttention reduces HBM IO by tiling softmax in SRAM【1†L1-L2】."
+
+    long_content = "FlashAttention " + ("detail " * 320)
+    writer = WriterAgent(llm=OAIStyleLLM())
+    out = writer.write({
+        "query": "How does FlashAttention work?",
+        "mode": "research",
+        "retrieved_documents": [{
+            "title": "FlashAttention",
+            "content": long_content,
+            "source": "paper.pdf",
+            "source_type": "pdf",
+            "relevance_score": 0.92,
+        }],
+        "routing_metadata": {"per_source_chars": 2400},
+        "warnings": [],
+        "agent_telemetry": {"writer_time_ms": 0.0},
+        "options": {},
+    })
+    assert "[1]" in out["final_report"]
+    assert "【" not in out["final_report"]
+    assert len(out["sources_cited"][0]["snippet"]) > 1500

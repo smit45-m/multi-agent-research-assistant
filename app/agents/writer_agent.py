@@ -235,10 +235,12 @@ class WriterAgent:
         fresh = route.get("requires_fresh_evidence", False)
         source_filtered = bool(state.get("options", {}).get("source_filters"))
         query = state["query"]
+        per_src_limit = min(int(route.get("per_source_chars", 2400)), 2400)
         sources = [{"citation_id": i + 1, "title": d.get("title", "Source"),
                     "source": d.get("source", ""), "url_or_path": d.get("source", ""),
                     "source_type": d.get("source_type", "document"),
-                    "snippet": d["content"][:1400], "relevance_score": d.get("relevance_score", 0.85)} for i, d in enumerate(docs)]
+                    "snippet": sanitize_untrusted_text(d["content"][:per_src_limit], strip_pii=False),
+                    "relevance_score": d.get("relevance_score", 0.85)} for i, d in enumerate(docs)]
         
         user_mem_ctx = (state.get("user_memory_context") or "").strip()
         has_user_memory = bool(user_mem_ctx)
@@ -317,7 +319,7 @@ class WriterAgent:
                             on_token(chunk)
                         except Exception:
                             pass
-                local_report = "".join(collected_local).strip()
+                local_report = re.sub(r"【(\d+)(?:†[^】]*)?】", r"[\1]", "".join(collected_local).strip())
 
             used_model = get_last_local_model() or f"{provider}/{selected_local}"
             if local_report and len(local_report) > 80:
@@ -486,7 +488,6 @@ class WriterAgent:
             else:
                 policy = "No retrieved evidence is available. Provide a helpful, accurate, well-structured explanation with pointwise details from foundational knowledge. Do NOT invent fake [1] citations or claim to have retrieved unsupplied documents."
 
-            per_src_limit = min(int(route.get("per_source_chars", 2600)), 2600)
             evidence = [
                 {
                     "id": i + 1,
@@ -528,6 +529,7 @@ class WriterAgent:
                     report = "".join(collected_parts)
                 else:
                     report = call_model(self.llm, state, active_system, prompt, max_tokens=max_tokens)
+                report = re.sub(r"【(\d+)(?:†[^】]*)?】", r"[\1]", report)
                 diag = evidence_diagnostics(report, sources)
                 if sources and diag["invalid_citations"]:
                     max_id = len(sources)
