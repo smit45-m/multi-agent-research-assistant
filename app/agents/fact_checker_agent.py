@@ -46,7 +46,14 @@ class FactCheckerAgent:
                     f"Timeline variance identified across sources spanning benchmarks from {min(all_years)} to {max(all_years)}."
                 )
 
-        verification_status = "verified_grounded" if not diagnostics.get("invalid_citations") else "citation_flagged"
+        from app.agents.jev_engine import GeminiDecisionEngine
+        verdict = GeminiDecisionEngine().decide_fact_check_verdict(
+            total_sources=total_sources,
+            valid_citations=len(diagnostics.get("valid_citations", [])),
+            invalid_citations=len(diagnostics.get("invalid_citations", [])),
+            contradictions_count=len(contradictions),
+        )
+        verification_status = "verified_grounded" if verdict.selected == "verified" else "citation_flagged"
         
         consistency_score = 0.95
         if diagnostics.get("invalid_citations"):

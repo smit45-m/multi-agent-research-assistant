@@ -199,28 +199,58 @@ export function StudioTab({
     setElapsed(0);
     const abort = new AbortController();
     controller.current = abort;
-    const started = Date.now();
+    let started = Date.now();
     const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
     const timeoutMs = speedMode === 'fast' ? 60_000 : 240_000;
     let timeout: ReturnType<typeof setTimeout> | undefined;
 
     try {
-      // If user attached files directly, upload them once with a dedicated 180s indexing budget and cache document_id
+      // If user attached files directly, check local/session cache + already-indexed server docs before uploading
       const uploadedAttachmentIds: string[] = [];
       if (attachedFiles.length > 0) {
+        let serverIndexedDocs: DocumentResponse[] | null = null;
         const remainingFiles: File[] = [];
         for (const file of attachedFiles) {
           const scopePrefix = currentUser?.id || 'guest';
           const fileKey = `${scopePrefix}:${file.name}_${file.size}_${file.lastModified}`;
-          const sessionCached = (() => {
-            try { return sessionStorage.getItem(`scholar_doc_${fileKey}`); } catch { return null; }
+          const storageCached = (() => {
+            try {
+              return sessionStorage.getItem(`scholar_doc_${fileKey}`) || localStorage.getItem(`scholar_doc_${fileKey}`);
+            } catch {
+              return null;
+            }
           })();
-          if (uploadedDocCache.current.has(fileKey) || sessionCached) {
-            const resolvedId = uploadedDocCache.current.get(fileKey) || sessionCached!;
+          if (uploadedDocCache.current.has(fileKey) || storageCached) {
+            const resolvedId = uploadedDocCache.current.get(fileKey) || storageCached!;
             uploadedDocCache.current.set(fileKey, resolvedId);
             uploadedAttachmentIds.push(resolvedId);
             continue;
           }
+
+          // Check server-side already-indexed documents (<1KB metadata check) to avoid re-uploading 15MB+ PDFs
+          if (serverIndexedDocs === null) {
+            try {
+              const listRes = await api<{ documents: DocumentResponse[] }>('/api/v1/documents/', {
+                signal: abort.signal,
+              });
+              serverIndexedDocs = listRes?.documents || [];
+            } catch {
+              serverIndexedDocs = [];
+            }
+          }
+          const matchingServerDoc = serverIndexedDocs.find(
+            d => d.filename === file.name && d.chunk_count > 0 && (!d.size_bytes || d.size_bytes === file.size)
+          );
+          if (matchingServerDoc?.document_id) {
+            uploadedDocCache.current.set(fileKey, matchingServerDoc.document_id);
+            try {
+              sessionStorage.setItem(`scholar_doc_${fileKey}`, matchingServerDoc.document_id);
+              localStorage.setItem(`scholar_doc_${fileKey}`, matchingServerDoc.document_id);
+            } catch { /* ignore */ }
+            uploadedAttachmentIds.push(matchingServerDoc.document_id);
+            continue;
+          }
+
           const form = new FormData();
           form.append('file', file);
           form.append('privacy_mode', String(speedMode === 'privacy'));
@@ -234,7 +264,10 @@ export function StudioTab({
             });
             if (upRes?.document_id) {
               uploadedDocCache.current.set(fileKey, upRes.document_id);
-              try { sessionStorage.setItem(`scholar_doc_${fileKey}`, upRes.document_id); } catch { /* ignore */ }
+              try {
+                sessionStorage.setItem(`scholar_doc_${fileKey}`, upRes.document_id);
+                localStorage.setItem(`scholar_doc_${fileKey}`, upRes.document_id);
+              } catch { /* ignore */ }
               uploadedAttachmentIds.push(upRes.document_id);
             }
           } catch (uploadErr) {
@@ -251,7 +284,9 @@ export function StudioTab({
         setAttachedFiles(remainingFiles);
       }
 
-      // Start the research query timeout AFTER any attachments have finished uploading & indexing
+      // Reset research timer and start research timeout AFTER any attachment upload finishes
+      started = Date.now();
+      setElapsed(0);
       timeout = setTimeout(() => abort.abort('timeout'), timeoutMs);
 
       setStreamingReport('');

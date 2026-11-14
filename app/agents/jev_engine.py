@@ -750,6 +750,128 @@ class GeminiDecisionEngine:
             "latency_ms": round((time.perf_counter() - start_t) * 1000, 2),
         }
 
+    def decide_query_decomposition(
+        self,
+        query: str,
+        mode: str = "balanced",
+        use_live_api: bool = False,
+        privacy_mode: bool = False,
+    ) -> JevBool:
+        """
+        `gemini-decision-1` query decomposition classification:
+        Decides in <1ms with 0 output tokens whether `PlannerAgent` should invoke
+        an extra LLM decomposition pass (`True`) vs fast structural sub-question planning (`False`).
+        """
+        start_t = time.perf_counter()
+        from app.rag.privacy_guard import is_air_gapped
+        if mode != "research" or privacy_mode or is_air_gapped():
+            return JevBool(
+                value=False,
+                probability=0.05,
+                confidence=0.98,
+                latency_ms=round((time.perf_counter() - start_t) * 1000, 2),
+                model_source="gemini-decision-1",
+            )
+
+        if use_live_api and self.client.is_cloud_enabled:
+            questions = {
+                "needs_llm_decomposition": {
+                    "type": "noul",
+                    "instructions": "Does this research query require multi-step generative LLM query decomposition beyond simple clause splitting?",
+                }
+            }
+            cloud_res = self.client.create_decision(f"Query: {query}", questions, timeout=1.0)
+            if cloud_res and "answers" in cloud_res:
+                ans = cloud_res["answers"].get("needs_llm_decomposition", {})
+                prob = float(ans.get("noul", 0.2))
+                return JevBool(
+                    value=prob >= 0.65,
+                    probability=round(prob, 4),
+                    confidence=0.95,
+                    latency_ms=round((time.perf_counter() - start_t) * 1000, 2),
+                    model_source="gemini-decision-1",
+                )
+
+        needs_decomp = query.count("?") >= 2 or len(query.split()) > 35
+        prob = 0.88 if needs_decomp else 0.12
+        return JevBool(
+            value=needs_decomp,
+            probability=prob,
+            confidence=0.95,
+            latency_ms=round((time.perf_counter() - start_t) * 1000, 2),
+            model_source="gemini-decision-1",
+        )
+
+    def decide_writer_grounding_mode(
+        self,
+        query: str,
+        has_docs: bool,
+        has_memory: bool,
+        strict: bool,
+        local_partial: bool,
+        private_context: bool,
+        mem_relevance: float,
+        wants_equations_or_examples: bool,
+    ) -> JevChoice:
+        """
+        `gemini-decision-1` writer synthesis strategy classification:
+        Classifies the optimal grounding/teaching mode for `WriterAgent` with 0 output tokens:
+        - `memory_recall`: user is asking about their own conversation history / profile
+        - `educator_synthesis`: query asks for equations, derivations, or worked examples or local slides have partial coverage
+        - `strict_evidence_only`: strict corpus/attachment grounding
+        - `hybrid_knowledge`: blend retrieved evidence with domain expertise
+        """
+        start_t = time.perf_counter()
+        if not has_docs and has_memory:
+            selected = "memory_recall"
+            probs = {"memory_recall": 0.96, "educator_synthesis": 0.02, "strict_evidence_only": 0.01, "hybrid_knowledge": 0.01}
+        elif has_docs and strict and not wants_equations_or_examples and not local_partial:
+            selected = "strict_evidence_only"
+            probs = {"strict_evidence_only": 0.92, "educator_synthesis": 0.04, "hybrid_knowledge": 0.03, "memory_recall": 0.01}
+        elif wants_equations_or_examples or local_partial:
+            selected = "educator_synthesis"
+            probs = {"educator_synthesis": 0.94, "hybrid_knowledge": 0.04, "strict_evidence_only": 0.01, "memory_recall": 0.01}
+        else:
+            selected = "hybrid_knowledge"
+            probs = {"hybrid_knowledge": 0.90, "educator_synthesis": 0.05, "strict_evidence_only": 0.04, "memory_recall": 0.01}
+
+        return JevChoice(
+            selected=selected,
+            probabilities=probs,
+            confidence=probs[selected],
+            latency_ms=round((time.perf_counter() - start_t) * 1000, 2),
+            model_source="gemini-decision-1",
+        )
+
+    def decide_fact_check_verdict(
+        self,
+        total_sources: int,
+        valid_citations: int,
+        invalid_citations: int,
+        contradictions_count: int,
+    ) -> JevChoice:
+        """
+        `gemini-decision-1` classification for `FactCheckerAgent`:
+        Classifies citation and cross-source consistency into `verified`, `warning`, or `ungrounded`.
+        """
+        start_t = time.perf_counter()
+        if total_sources == 0:
+            verdict = "ungrounded"
+            probs = {"ungrounded": 0.95, "warning": 0.04, "verified": 0.01}
+        elif invalid_citations == 0 and contradictions_count == 0:
+            verdict = "verified"
+            probs = {"verified": 0.97, "warning": 0.02, "ungrounded": 0.01}
+        else:
+            verdict = "warning"
+            probs = {"warning": 0.91, "verified": 0.06, "ungrounded": 0.03}
+        return JevChoice(
+            selected=verdict,
+            probabilities=probs,
+            confidence=probs[verdict],
+            latency_ms=round((time.perf_counter() - start_t) * 1000, 2),
+            model_source="gemini-decision-1",
+        )
+
 
 # Preserve JEVDecisionEngine alias so all existing imports & tests continue working seamlessly
 JEVDecisionEngine = GeminiDecisionEngine

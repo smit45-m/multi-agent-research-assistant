@@ -46,9 +46,13 @@ class PlannerAgent:
             or state.get("options", {}).get("privacy_mode", False)
         )
         if limit > 1 and not state.get("offline") and not is_privacy and state.get("mode") == "research":
-            # Use gemini-decision-1 fast complexity gate: only invoke heavy generative decomposition
-            # when the query has multiple distinct questions or >35 words
-            needs_llm_decomposition = query.count("?") >= 2 or len(query.split()) > 35
+            from app.agents.jev_engine import GeminiDecisionEngine
+            decomp_decision = GeminiDecisionEngine().decide_query_decomposition(
+                query=query,
+                mode=state.get("mode", "balanced"),
+                privacy_mode=is_privacy,
+            )
+            needs_llm_decomposition = decomp_decision.value
             if needs_llm_decomposition:
                 try:
                     data = call_model(self.llm, state,

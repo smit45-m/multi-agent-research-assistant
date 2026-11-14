@@ -239,3 +239,38 @@ def test_writer_normalizes_openai_citations_and_aligns_snippet_len():
     assert "[1]" in out["final_report"]
     assert "【" not in out["final_report"]
     assert len(out["sources_cited"][0]["snippet"]) > 1500
+
+
+def test_gemini_decision_1_classification_coverage():
+    from app.agents.jev_engine import GeminiDecisionEngine
+
+    engine = GeminiDecisionEngine()
+    decomp = engine.decide_query_decomposition(
+        "What is ARIMA and explain time series forecasting with examples and equations",
+        mode="research",
+    )
+    assert decomp.model_source == "gemini-decision-1"
+    assert isinstance(decomp.value, bool)
+
+    grounding = engine.decide_writer_grounding_mode(
+        query="What is ARIMA and explain time series forecasting with examples and equations",
+        has_docs=True,
+        has_memory=False,
+        strict=False,
+        local_partial=True,
+        private_context=False,
+        mem_relevance=0.0,
+        wants_equations_or_examples=True,
+    )
+    assert grounding.model_source == "gemini-decision-1"
+    assert grounding.selected == "educator_synthesis"
+
+    verdict = engine.decide_fact_check_verdict(
+        total_sources=10,
+        valid_citations=8,
+        invalid_citations=0,
+        contradictions_count=0,
+    )
+    assert verdict.model_source == "gemini-decision-1"
+    assert verdict.selected == "verified"
+

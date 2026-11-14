@@ -283,9 +283,21 @@ class BoundedLLM:
                     return ""
 
                 text = ""
-                if groq_available:
+                gemini_has_active = gemini_available and any(
+                    not _is_cooled_down(m) for m in _gemini_pool(self.mode)
+                )
+                if gemini_has_active:
                     try:
-                        fast_groq_timeout = min(remaining, 6.0 if self.mode in ("fast", "quick") else 16.0)
+                        gemini_budget = min(max(remaining, 4.0), 8.0 if self.mode in ("fast", "quick") else 22.0)
+                        text = _call_gemini(timeout_sec=gemini_budget)
+                    except Exception as e:
+                        logger.warning(f"Primary Gemini orchestrator pass skipped ({e}); falling back to Groq")
+                        text = ""
+
+                if not text and groq_available:
+                    try:
+                        rem_after_gem = self.deadline - time.monotonic() if self.deadline else remaining
+                        fast_groq_timeout = min(max(rem_after_gem, 3.0), 6.0 if self.mode in ("fast", "quick") else 16.0)
                         text = _call_groq(timeout_sec=fast_groq_timeout)
                     except Exception as e:
                         if _is_auth_error(e):
@@ -293,7 +305,7 @@ class BoundedLLM:
                         logger.warning(f"Fast Groq pass skipped ({e}); attempting instant Gemini fallback")
                         text = ""
 
-                if not text and gemini_available:
+                if not text and gemini_available and not gemini_has_active:
                     try:
                         rem_after_groq = self.deadline - time.monotonic() if self.deadline else remaining
                         gemini_budget = min(max(rem_after_groq, 4.0), 10.0 if self.mode in ("fast", "quick") else 22.0)
@@ -329,8 +341,61 @@ class BoundedLLM:
             self.failure = message
             raise ModelUnavailable(message) from None
 
+    def _iter_gemini_stream(self, system, prompt, max_tokens=2500):
+        """Primary Gemini SSE stream generator for Fast (<5s) and Deep Research modes."""
+        candidate_models = [m for m in _gemini_pool(self.mode) if not _is_cooled_down(m)]
+        if not candidate_models:
+            return
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.settings.GEMINI_API_KEY,
+        }
+        client = get_shared_client()
+        gemini_stream_timeout = 25.0 if self.mode in ("research", "deep") else (15.0 if self.mode == "balanced" else 8.0)
+        for model_name in candidate_models:
+            streamed_any = False
+            try:
+                stream_max_tokens = 2400 if self.mode in ("fast", "quick") else max(max_tokens, 2400)
+                gen_cfg = {
+                    "temperature": 0.2,
+                    "maxOutputTokens": stream_max_tokens,
+                }
+                if "3.5-flash" in model_name and "lite" not in model_name:
+                    gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
+                body = {
+                    "systemInstruction": {"parts": [{"text": system}]},
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": gen_cfg,
+                }
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?alt=sse"
+                with client.stream("POST", url, headers=headers, json=body, timeout=gemini_stream_timeout) as response:
+                    if response.status_code == 200:
+                        for line in response.iter_lines():
+                            if line.startswith("data: "):
+                                try:
+                                    data = json.loads(line[6:])
+                                    parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                                    for p in parts:
+                                        if p.get("thought"):
+                                            continue
+                                        chunk = _INVISIBLE_CHARS_RE.sub("", p.get("text", ""))
+                                        if chunk:
+                                            streamed_any = True
+                                            yield chunk
+                                except Exception:
+                                    continue
+                        if streamed_any:
+                            self.model = model_name
+                            self.calls += 1
+                            return
+                    elif response.status_code in (404, 429, 500, 502, 503):
+                        _mark_cooldown(model_name, response.status_code)
+            except Exception as gem_err:
+                _mark_cooldown(model_name, gem_err)
+                continue
+
     def stream_complete(self, system, prompt, max_tokens=2500):
-        """Yields streamed text chunks in real-time from local LLM (when air-gapped) or Groq/Gemini."""
+        """Yields streamed text chunks in real-time from local LLM (when air-gapped) or Gemini/Groq."""
         from app.rag.privacy_guard import is_air_gapped, stream_local_llm, get_last_local_model
         if self.privacy_mode or is_air_gapped():
             yielded = False
@@ -345,6 +410,21 @@ class BoundedLLM:
                     "Air-Gapped Privacy Mode: Local LLM daemon (Ollama/LM Studio) did not respond."
                 )
             return
+
+        if (
+            self.backend is None
+            and not self.disabled
+            and not self.failure
+            and self.settings.gemini_configured
+        ):
+            rem_budget = self.deadline - time.monotonic() if self.deadline else self.settings.LLM_TIMEOUT_SECONDS
+            if rem_budget >= 1.5:
+                streamed_primary_gemini = False
+                for chunk in self._iter_gemini_stream(system, prompt, max_tokens=max_tokens):
+                    streamed_primary_gemini = True
+                    yield chunk
+                if streamed_primary_gemini:
+                    return
 
         groq_available = bool(self.settings.OPENAI_API_KEY and not self.settings.OPENAI_API_KEY.startswith(("your-", "changeme")))
         gemini_available = self.settings.gemini_configured

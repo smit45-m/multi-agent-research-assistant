@@ -419,7 +419,20 @@ class WriterAgent:
                 )
             )
             local_partial = bool(state.get("local_partial_coverage"))
-            needs_educator_expansion = bool(docs and not strict and (wants_equations_or_examples or local_partial))
+            from app.agents.jev_engine import GeminiDecisionEngine
+            grounding_decision = GeminiDecisionEngine().decide_writer_grounding_mode(
+                query=query,
+                has_docs=bool(docs),
+                has_memory=has_user_memory,
+                strict=strict,
+                local_partial=local_partial,
+                private_context=bool(route.get("private_context")),
+                mem_relevance=relevance(query, user_mem_ctx) if has_user_memory else 0.0,
+                wants_equations_or_examples=wants_equations_or_examples,
+            )
+            needs_educator_expansion = bool(
+                docs and not strict and (grounding_decision.selected == "educator_synthesis" or wants_equations_or_examples or local_partial)
+            )
             is_memory_query = bool(
                 has_user_memory
                 and (
