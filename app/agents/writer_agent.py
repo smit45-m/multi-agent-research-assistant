@@ -416,12 +416,19 @@ class WriterAgent:
                     "equation", "equations", "formula", "formulas", "derive", "derivation",
                     "math", "mathematical", "arima", "seasonality", "walkthrough",
                     "with example", "with proper", "and examples", "step by step",
-                    "explain", "normalization", "standardization", "transformation",
+                    "normalization", "standardization", "transformation",
                     "discretization", "preprocessing", "whole process", "ways of",
                     "types of", "methods of", "regression", "classification", "clustering",
                     "time series", "forecast", "entropy", "information gain", "gini",
                     "distance", "similarity", "correlation", "chi-square", "pca",
                 )
+            )
+            ev_raw = " ".join(s.get("snippet", "") for s in sources)
+            ev_low = ev_raw.lower()
+            evidence_already_has_examples = (
+                ("for example" in ev_low or "e.g." in ev_low)
+                and any(op in ev_raw for op in ("=", "+", "-", "/", "^"))
+                and len(ev_raw) >= 450
             )
             local_partial = bool(state.get("local_partial_coverage"))
             from app.agents.jev_engine import GeminiDecisionEngine
@@ -433,16 +440,15 @@ class WriterAgent:
                 local_partial=local_partial,
                 private_context=bool(route.get("private_context")),
                 mem_relevance=relevance(query, user_mem_ctx) if has_user_memory else 0.0,
-                wants_equations_or_examples=wants_equations_or_examples,
+                wants_equations_or_examples=bool(wants_equations_or_examples and not evidence_already_has_examples),
                 mode=mode,
             )
             needs_educator_expansion = bool(
                 docs
                 and not strict
                 and (
-                    mode == "research"
-                    or grounding_decision.selected == "educator_synthesis"
-                    or wants_equations_or_examples
+                    grounding_decision.selected == "educator_synthesis"
+                    or (wants_equations_or_examples and not evidence_already_has_examples)
                     or local_partial
                 )
             )
@@ -461,9 +467,10 @@ class WriterAgent:
 
             research_grounded_style = (
                 "Write a rigorous, evidence-grounded Markdown research report (500-950 words MAX) that directly answers every part of the question using ONLY facts supported by the supplied evidence. "
-                "Start with a Markdown heading (`# ...` or `### Direct Answer`), followed by focused pointwise breakdowns with inline [1], [2] citations and concise takeaways. "
+                "Structure the report with clear Markdown headings (`### Direct Answer`, `### Core Architecture & Mathematical Formulation`, `### Step-by-Step Mechanisms & Quantitative Analysis`, `### Key Trade-offs & Takeaways`), followed by focused pointwise breakdowns with inline [1], [2] citations. "
+                "Explicitly include all mathematical equations, formulas, complexity bounds, and worked examples present in the supplied evidence. "
                 "Include a Markdown comparison table ONLY if multiple entities/metrics are compared directly in the evidence. "
-                "Do NOT invent external worked traces, ASCII diagrams, unretrieved equations, or speculative details."
+                "Do NOT invent external worked traces, ASCII diagrams, unretrieved equations, or speculative details not supported by the supplied evidence."
             )
 
             research_educator_grounded_style = (

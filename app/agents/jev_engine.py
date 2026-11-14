@@ -829,7 +829,7 @@ class GeminiDecisionEngine:
         elif has_docs and strict and not wants_equations_or_examples and not local_partial:
             selected = "strict_evidence_only"
             probs = {"strict_evidence_only": 0.92, "educator_synthesis": 0.04, "hybrid_knowledge": 0.03, "memory_recall": 0.01}
-        elif not strict and (mode == "research" or wants_equations_or_examples or local_partial):
+        elif not strict and (wants_equations_or_examples or local_partial):
             selected = "educator_synthesis"
             probs = {"educator_synthesis": 0.95, "hybrid_knowledge": 0.03, "strict_evidence_only": 0.01, "memory_recall": 0.01}
         else:
