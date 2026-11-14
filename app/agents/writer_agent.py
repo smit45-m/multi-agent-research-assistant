@@ -235,7 +235,7 @@ class WriterAgent:
         fresh = route.get("requires_fresh_evidence", False)
         source_filtered = bool(state.get("options", {}).get("source_filters"))
         query = state["query"]
-        per_src_limit = min(int(route.get("per_source_chars", 2400)), 2400)
+        per_src_limit = max(1400, min(int(route.get("per_source_chars", 2400)), 2800))
         sources = [{"citation_id": i + 1, "title": d.get("title", "Source"),
                     "source": d.get("source", ""), "url_or_path": d.get("source", ""),
                     "source_type": d.get("source_type", "document"),
@@ -409,6 +409,30 @@ class WriterAgent:
                 "# 🚀 Strategic Recommendations & Key Takeaways. Cite sources with [1], [2] where applicable."
             )
 
+            q_low = query.lower()
+            wants_equations_or_examples = any(
+                k in q_low
+                for k in (
+                    "equation", "equations", "formula", "formulas", "derive", "derivation",
+                    "math", "mathematical", "arima", "seasonality", "walkthrough",
+                    "with example", "with proper", "and examples", "step by step",
+                )
+            )
+            local_partial = bool(state.get("local_partial_coverage"))
+            needs_educator_expansion = bool(docs and not strict and (wants_equations_or_examples or local_partial))
+            is_memory_query = bool(
+                has_user_memory
+                and (
+                    route.get("private_context")
+                    or relevance(query, user_mem_ctx) >= 0.18
+                    or re.search(
+                        r"\b(?:remember|recall|earlier|previous|previously|my\s+\w+|we\s+discussed|codename|recap|our\s+project|what\s+did\s+i)\b",
+                        query,
+                        re.I,
+                    )
+                )
+            )
+
             research_grounded_style = (
                 "Write a rigorous, evidence-grounded Markdown research report (500-950 words MAX) that directly answers every part of the question using ONLY facts supported by the supplied evidence. "
                 "Start with a Markdown heading (`# ...` or `### Direct Answer`), followed by focused pointwise breakdowns with inline [1], [2] citations and concise takeaways. "
@@ -428,32 +452,48 @@ class WriterAgent:
                 "Include tables or formulas ONLY where grounded in the supplied evidence; do not fabricate external examples."
             )
 
+            fast_educator_grounded_style = (
+                "Provide a fast, structured, textbook-grade technical answer (350-650 words) that directly and completely answers EVERY part of the user's question. "
+                "Ground definitions and examples from the supplied passages with inline [1], [2] citations, AND provide the complete mathematical equations (with every variable defined) and concrete numerical examples for all requested concepts (even if the retrieved lecture slides only list slide titles or brief bullets). "
+                "Follow a clean hierarchy (`# Main Topic`, `## 🎯 Core Concepts & Definitions`, `## 📐 Mathematical Equations & Formulations`, `## 💡 Concrete Worked Examples`, `## 📊 Summary Comparison Table`)."
+            )
+
+            balanced_educator_grounded_style = (
+                "Provide a comprehensive, example-driven explanation (550-950 words) following the expert teacher standard: "
+                "1) 🎯 Core Idea & Definitions grounded in [1], [2], "
+                "2) 📐 Complete Mathematical Equations & Variable Definitions for every requested concept, "
+                "3) 💡 Step-by-Step Numerical Worked Examples (incorporating examples from [1], [2] plus full calculations), "
+                "4) 📊 Comparative Analysis Matrix, "
+                "5) 🔑 Key Takeaways."
+            )
+
             lengths = {
                 "fast": (
-                    1000,
-                    fast_grounded_style if docs else (
-                        "Provide a fast, ultra-crisp, highly-structured technical answer (220-340 words TOTAL). "
-                        "Directly and completely address EVERY part of the user question, including key formulas/complexity metrics. "
-                        "Follow a clean hierarchy (`# Main Topic`, `## Direct Answer`, `## How It Works`, compact table if helpful, `## Key Takeaways`)."
+                    1600 if needs_educator_expansion else 1000,
+                    (fast_educator_grounded_style if needs_educator_expansion else fast_grounded_style) if docs else (
+                        "Provide a fast, ultra-crisp, highly-structured technical answer (260-480 words). "
+                        "Directly and completely address EVERY part of the user question, including key formulas, defined variables, and concrete examples. "
+                        "Follow a clean hierarchy (`# Main Topic`, `## Direct Answer`, `## How It Works & Equations`, compact table if helpful, `## Key Takeaways`)."
                     ),
                 ),
                 "balanced": (
-                    2000,
-                    balanced_grounded_style if docs else (
+                    2200,
+                    (balanced_educator_grounded_style if needs_educator_expansion else balanced_grounded_style) if docs else (
                         "Provide an in-depth, example-driven explanation (550-850 words) following the expert teacher standard: "
-                        "1) Core Idea & Direct Answer, 2) Step-by-Step Mechanisms, 3) Concrete Worked Walkthrough, "
+                        "1) Core Idea & Direct Answer, 2) Step-by-Step Mechanisms & Equations, 3) Concrete Worked Walkthrough, "
                         "4) Comparative Analysis Matrix, 5) Key Takeaways. Answer all sub-questions completely."
                     ),
                 ),
                 "research": (
-                    2400 if docs else 3600,
-                    research_grounded_style if docs else (research_technical_style if is_technical_or_deep else research_general_style),
+                    3200 if needs_educator_expansion else (2400 if docs else 3600),
+                    ((research_technical_style if is_technical_or_deep else research_general_style) if needs_educator_expansion else research_grounded_style)
+                    if docs else (research_technical_style if is_technical_or_deep else research_general_style),
                 ),
             }
             max_tokens, style = lengths.get(mode, lengths["balanced"])
-            if mode in ("fast", "quick") and has_user_memory and (
+            if mode in ("fast", "quick") and has_user_memory and not wants_equations_or_examples and (
                 re.search(r"\b(?:brief|briefly|concise|concisely|recap)\b", query, re.I)
-                or "concise" in user_mem_ctx.lower()
+                or ("concise" in user_mem_ctx.lower() and is_memory_query)
             ):
                 style = (
                     "Respond concisely and directly (120-260 words) respecting the signed-in user's remembered brevity "
@@ -461,7 +501,7 @@ class WriterAgent:
                     "workspace status using clean bullet points with bracketed citations [1], [2] where docs apply, "
                     "and do NOT pad with generic math formulas or fabricated comparison columns."
                 )
-            if not docs and has_user_memory and route.get("private_context"):
+            if not docs and is_memory_query:
                 max_tokens = min(max_tokens, 1400)
                 style = (
                     "Answer the signed-in user's personal memory / workspace recall question directly and clearly "
@@ -471,6 +511,13 @@ class WriterAgent:
                 )
             if strict:
                 policy = "Strict Grounding Mode: Use only supplied evidence. Cite every empirical claim with [1], [2] and do not introduce external unverified facts."
+            elif needs_educator_expansion:
+                policy = (
+                    "Prefer supplied evidence: ground all definitions, facts, and examples present in `evidence` and cite them with [1], [2]. "
+                    "When the retrieved passages are lecture slides or partial excerpts that omit full mathematical equations, derivations, or worked examples requested by the user, "
+                    "seamlessly provide the complete, rigorous mathematical equations (with every symbol/parameter defined) and step-by-step worked examples from foundational domain knowledge. "
+                    "Attach [1], [2] citations strictly to claims taken from the supplied passages, and NEVER refuse to explain a concept or equation just because a slide excerpt is brief."
+                )
             elif docs:
                 policy = (
                     "Ground every factual claim, comparison, metric, and technical mechanism strictly in the supplied evidence "
@@ -478,7 +525,7 @@ class WriterAgent:
                     "Do not invent unretrieved statistics, worked tensor traces, ASCII diagrams, or unsupported claims; if a detail "
                     "is absent from the passages, state clearly what the evidence covers."
                 )
-            elif has_user_memory:
+            elif is_memory_query:
                 policy = (
                     "No new external documents matched this turn, so ground your response strictly in the signed-in user's "
                     "`personalized_user_memory`. Directly answer from remembered preferences, prior session answers, "
@@ -486,7 +533,7 @@ class WriterAgent:
                     "or fabricate facts absent from `personalized_user_memory`."
                 )
             else:
-                policy = "No retrieved evidence is available. Provide a helpful, accurate, well-structured explanation with pointwise details from foundational knowledge. Do NOT invent fake [1] citations or claim to have retrieved unsupplied documents."
+                policy = "No retrieved evidence is available. Provide a helpful, accurate, well-structured explanation with pointwise details, mathematical formulas, and concrete examples from foundational knowledge. Do NOT invent fake [1] citations or claim to have retrieved unsupplied documents."
 
             evidence = [
                 {
@@ -508,14 +555,14 @@ class WriterAgent:
                 "grounding_policy": policy,
                 "evidence": evidence,
             }
-            if compact_analysis:
+            if compact_analysis and not needs_educator_expansion:
                 prompt_payload["analysis"] = compact_analysis
             elif not docs:
                 prompt_payload["analysis"] = raw_analysis
-            if user_mem_ctx and (not docs or relevance(query, user_mem_ctx) >= 0.15):
+            if user_mem_ctx and (is_memory_query or relevance(query, user_mem_ctx) >= 0.15):
                 prompt_payload["personalized_user_memory"] = sanitize_untrusted_text(user_mem_ctx[:1500])
             prompt = json.dumps(prompt_payload, ensure_ascii=False)
-            active_system = SYSTEM_GROUNDED if (docs or has_user_memory) else SYSTEM
+            active_system = SYSTEM if (needs_educator_expansion or (not docs and not is_memory_query)) else SYSTEM_GROUNDED
             on_token = getattr(self, "on_token", None) or state.get("on_token") or state.get("options", {}).get("on_token")
             try:
                 if on_token is not None and hasattr(self.llm, "stream_complete"):

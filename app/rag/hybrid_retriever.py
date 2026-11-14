@@ -89,9 +89,19 @@ class HybridRetriever:
 
     def generate_multi_queries(self, query):
         chunks = [query]
-        parts = re.split(r"\s+(?:versus|vs\.?|compared to|and)\s+|[?;\n]+", query, flags=re.I)
-        chunks.extend(p.strip() for p in parts if len(tokens(p)) >= 2)
-        return list(dict.fromkeys(chunks))[:4]
+        parts = re.split(r"\s+(?:versus|vs\.?|compared to|and)\s+|[,?;\n]+", query, flags=re.I)
+        meta_re = re.compile(
+            r"\b(?:explain|describe|define|what|how|why|give|me|with|proper|equation|equations|formula|formulas|example|examples|detail|details|step\s+by\s+step|walkthrough)\b",
+            re.I,
+        )
+        cleaned_parts = []
+        for p in parts:
+            stripped = re.sub(r"\s+", " ", meta_re.sub(" ", p)).strip(" ,;.-")
+            if stripped and len(tokens(stripped)) >= 1:
+                cleaned_parts.append(stripped)
+        if len(cleaned_parts) >= 2:
+            chunks.extend(cleaned_parts)
+        return list(dict.fromkeys(chunks))[:5]
 
     def reciprocal_rank_fusion(self, ranked_lists, top_k=8):
         scores, mapping = defaultdict(float), {}
@@ -160,7 +170,7 @@ class HybridRetriever:
             use_dense = mode not in {"bm25", "vectorless"} and dense_available
             if mode in {"hybrid", "rrf", "multi_query", "agentic", "vector", "hierarchical"} and not dense_available:
                 warnings.append("Dense semantic retrieval is unavailable; used BM25 rather than pretending to run embeddings.")
-            queries = self.generate_multi_queries(query) if mode in {"multi_query", "agentic"} else [query]
+            queries = self.generate_multi_queries(query) if mode in {"multi_query", "agentic", "hybrid"} else [query]
             lists = []
             for question in queries:
                 if use_dense:
@@ -171,40 +181,75 @@ class HybridRetriever:
                         warnings.append("Dense search failed; kept available lexical evidence.")
                 if mode != "vector" or not dense_available:
                     lists.append(sparse.search(question, max(top_k * 3, 12)))
-            fused = self.reciprocal_rank_fusion(lists, max(top_k * 4, 20))
+            fused = self.reciprocal_rank_fusion(lists, max(top_k * 5, 25))
             ranked = []
             seen_chunk_signatures = []
+            q_lower = query.lower()
+            wants_examples_or_math = any(k in q_lower for k in ("example", "equation", "formula", "derive", "calculation", "step"))
             for doc in fused:
-                lexical = relevance(query, doc.page_content, str(doc.metadata.get("title", "")))
+                title_str = str(doc.metadata.get("title", ""))
+                lexical = relevance(query, doc.page_content, title_str)
+                sub_lex = max(
+                    (relevance(q_part, doc.page_content, title_str) for q_part in queries[1:]),
+                    default=0.0,
+                )
                 semantic = float(doc.metadata.get("dense_score", 0))
                 rrf_score = float(doc.metadata.get("rrf_score", 0))
+                effective_lex = max(lexical, 0.55 * sub_lex)
                 # Soft relevance gate: retain documents with decent lexical, semantic, or strong RRF support
-                if lexical < self.min_relevance and semantic < 0.35 and rrf_score < 0.012:
+                if effective_lex < self.min_relevance and semantic < 0.35 and rrf_score < 0.012:
                     continue
-                score = max(lexical, 0.85 * semantic, rrf_score * 12.0)
+                score = max(effective_lex, 0.85 * semantic, rrf_score * 12.0)
+                if wants_examples_or_math and re.search(r"\be\.g\.|\bexample\b|[0-9]+\s*[+\-*/=]\s*[0-9]+", doc.page_content, re.I):
+                    score = min(1.0, score + 0.08)
                 doc.metadata["relevance_score"] = min(1.0, round(score, 3))
 
-                # Diversity filtering / Deduplication: prevent returning near-duplicate passages
+                # Diversity filtering / Deduplication: prevent returning near-duplicate passages,
+                # while upgrading progressive-reveal slide stubs to the fuller slide containing examples/formulas.
                 clean_words = set(re.findall(r"\w{4,}", doc.page_content.lower()))
                 is_duplicate = False
-                for prev in seen_chunk_signatures:
+                for idx_prev, prev in enumerate(seen_chunk_signatures):
                     if clean_words and prev:
                         overlap = len(clean_words & prev) / min(len(clean_words), len(prev))
                         if overlap > 0.85:
                             is_duplicate = True
+                            prev_score, prev_doc, prev_base = ranked[idx_prev]
+                            if (
+                                len(clean_words) > len(prev)
+                                and len(doc.page_content) > len(prev_doc.page_content) * 1.12
+                                and score >= prev_base * 0.85
+                            ):
+                                seen_chunk_signatures[idx_prev] = clean_words
+                                ranked[idx_prev] = (max(prev_score, score + 0.25 * rrf_score), doc, max(prev_base, effective_lex, 0.85 * semantic))
                             break
                 if is_duplicate:
                     continue
                 seen_chunk_signatures.append(clean_words)
 
-                ranked.append((score + 0.25 * rrf_score, doc, max(lexical, 0.85 * semantic)))
+                ranked.append((score + 0.25 * rrf_score, doc, max(effective_lex, 0.85 * semantic)))
             ranked.sort(key=lambda item: item[0], reverse=True)
             # Relative cutoff: a passage must carry at least RELATIVE_CUTOFF of the best passage's
             # lexical/semantic evidence, otherwise it only matched via a stray shared term (RRF alone).
             if ranked:
                 best_base = max(item[2] for item in ranked)
-                ranked = [item for i, item in enumerate(ranked) if i == 0 or item[2] >= self.relative_cutoff * best_base]
+                cutoff_ratio = 0.50 if len(queries) > 1 else self.relative_cutoff
+                ranked = [item for i, item in enumerate(ranked) if i == 0 or item[2] >= cutoff_ratio * best_base]
             result = [doc for _, doc, _ in ranked[:top_k]]
+            if len(queries) > 1 and len(result) >= 2 and len(ranked) > len(result):
+                top_rel = float(result[0].metadata.get("relevance_score", 0.5))
+                for sq in queries[1:]:
+                    sq_toks = set(tokens(sq))
+                    if not sq_toks:
+                        continue
+                    if not any(sq_toks & set(tokens(d.page_content + " " + str(d.metadata.get("title", "")))) for d in result):
+                        for _, cand_doc, _ in ranked[len(result):]:
+                            if sq_toks & set(tokens(cand_doc.page_content + " " + str(cand_doc.metadata.get("title", "")))):
+                                cand_doc.metadata["relevance_score"] = max(
+                                    float(cand_doc.metadata.get("relevance_score", 0.0)),
+                                    round(top_rel * 0.92, 3),
+                                )
+                                result[-1] = cand_doc
+                                break
             if mode == "hierarchical":
                 expanded = []
                 for doc in result:

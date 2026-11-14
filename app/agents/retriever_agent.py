@@ -31,16 +31,58 @@ class RetrieverAgent:
         is_privacy = state.get("mode") == "privacy" or bool(options.get("privacy_mode"))
         # User-supplied attachments are explicit context; sanitize prompt injection & PII before indexing.
         from app.rag.privacy_guard import sanitize_untrusted_text
-        attachment_ids = {str(att.get("id")) for att in state.get("attachments", []) if att.get("id")}
-        for attachment in state.get("attachments", []):
-            if filters and attachment["kind"] not in filters:
-                continue
-            sanitized_att_text = sanitize_untrusted_text(attachment.get("text", ""), strip_pii=True)
-            if not sanitized_att_text:
-                continue
-            candidates.append({"title": attachment["filename"], "content": sanitized_att_text,
-                               "source": "attachment:" + attachment["id"], "source_type": attachment["kind"],
-                               "relevance_score": 1.0, "user_supplied": True})
+        raw_attachments = state.get("attachments", [])
+        attachment_ids = {str(att.get("id")) for att in raw_attachments if att.get("id")}
+        attachment_ids.update(str(aid) for aid in options.get("attachment_ids", []) if aid)
+        inline_small_attachments = len(raw_attachments) <= 3
+        fallback_attachment_candidates = []
+        if inline_small_attachments:
+            for attachment in raw_attachments:
+                if filters and attachment["kind"] not in filters:
+                    continue
+                sanitized_att_text = sanitize_untrusted_text(attachment.get("text", ""), strip_pii=True)
+                if not sanitized_att_text:
+                    continue
+                candidates.append({"title": attachment["filename"], "content": sanitized_att_text,
+                                   "source": "attachment:" + attachment["id"], "source_type": attachment["kind"],
+                                   "relevance_score": 1.0, "user_supplied": True, "from_attachment": True})
+        else:
+            # Multi-chunk attached document (e.g., a 350-page lecture PDF): rank chunks via HybridRetriever
+            # (with progressive-reveal slide upgrade & multi-topic coverage) instead of taking pages 1-3.
+            from langchain_core.documents import Document
+            att_docs = []
+            for idx_att, attachment in enumerate(raw_attachments):
+                if filters and attachment["kind"] not in filters:
+                    continue
+                sanitized_att_text = sanitize_untrusted_text(attachment.get("text", ""), strip_pii=True)
+                if not sanitized_att_text:
+                    continue
+                att_entry = {
+                    "title": attachment["filename"],
+                    "filename": attachment["filename"],
+                    "content": sanitized_att_text,
+                    "source": "attachment:" + str(attachment["id"]),
+                    "source_type": attachment["kind"],
+                    "format": attachment["kind"],
+                    "relevance_score": max((relevance(q, sanitized_att_text, attachment["filename"]) for q in questions), default=0.0),
+                    "from_attachment": True,
+                }
+                if idx_att < 3:
+                    fallback_attachment_candidates.append(att_entry)
+                att_docs.append(Document(page_content=sanitized_att_text, metadata=att_entry))
+            if att_docs:
+                class _AttStore:
+                    dense_available = False
+                    version = 1
+                    def get_all_documents(self):
+                        return att_docs
+                att_hr = HybridRetriever(_AttStore())
+                for d_hit in att_hr.retrieve(query, mode="hybrid", top_k=top_k, source_filters=filters):
+                    m_hit = dict(d_hit.metadata)
+                    m_hit["content"] = d_hit.page_content
+                    m_hit["from_attachment"] = True
+                    m_hit["relevance_score"] = max(float(m_hit.get("relevance_score", 0.0)), 0.32)
+                    candidates.append(m_hit)
         # Multi-Hop Web Navigation & Live URL Traversal
         from app.rag.web_navigator import MultiHopWebNavigator
         extracted_urls = MultiHopWebNavigator.extract_urls(query)
@@ -92,10 +134,11 @@ class RetrieverAgent:
                     meta = doc.metadata
                     doc_id = str(meta.get("document_id") or "")
                     doc_src = str(meta.get("source", meta.get("source_path", "document")))
-                    # Avoid returning duplicate unredacted FAISS/upload copies of user-supplied attachments
-                    if attachment_ids and (doc_id in attachment_ids or any(aid in doc_src for aid in attachment_ids)):
+                    is_att_doc = bool(attachment_ids and (doc_id in attachment_ids or any(aid in doc_src for aid in attachment_ids)))
+                    # Avoid returning duplicate unredacted FAISS/upload copies of inline small attachments
+                    if inline_small_attachments and is_att_doc:
                         continue
-                    clean_content = sanitize_untrusted_text(doc.page_content, strip_pii=is_privacy)
+                    clean_content = sanitize_untrusted_text(doc.page_content, strip_pii=(is_privacy or is_att_doc))
                     if not clean_content:
                         continue
                     doc_filename = str(meta.get("filename") or "")
@@ -103,18 +146,25 @@ class RetrieverAgent:
                     candidates.append({"title": doc_title,
                                        "filename": doc_filename,
                                        "content": clean_content,
-                                       "source": doc_src,
+                                       "source": f"attachment:{doc_id}" if (is_att_doc and doc_id) else doc_src,
                                        "source_type": str(meta.get("format", "document")).lstrip("."),
                                        "relevance_score": float(meta.get("relevance_score", 0)),
-                                       "dense_score": float(meta.get("dense_score", 0))})
+                                       "dense_score": float(meta.get("dense_score", 0)),
+                                       "from_attachment": is_att_doc})
             except Exception as exc:
                 state["warnings"].append(f"Local retrieval failed: {exc}")
         relevant_local = [
             d for d in candidates
             if d.get("user_supplied")
+            or d.get("from_attachment")
             or d.get("dense_score", 0) >= 0.5
             or any(relevance(q, d["content"], d["title"]) >= self.minimum for q in questions)
         ]
+        if not relevant_local and fallback_attachment_candidates:
+            for fb in fallback_attachment_candidates:
+                fb["user_supplied"] = True
+                fb["relevance_score"] = 1.0
+                relevant_local.append(fb)
         permitted_web = options.get("web_search", True) and get_settings().WEB_SEARCH_ENABLED and not state.get("offline")
         # Private/library questions never leak into public search automatically.
         if state.get("mode") == "privacy" or options.get("privacy_mode"):
@@ -126,10 +176,18 @@ class RetrieverAgent:
         from app.agents.jev_engine import JEVDecisionEngine
         jev = JEVDecisionEngine()
         max_local_score = max([d.get("relevance_score", 0) for d in relevant_local], default=0.0)
-        q_terms = {t for t in tokens(query) if len(t) >= 4 and t not in {"explain", "depth", "what", "with", "from", "that", "this", "have", "does", "work", "works", "role", "between"}}
+        q_terms = {t for t in tokens(query) if len(t) >= 4 and t not in {"explain", "depth", "what", "with", "from", "that", "this", "have", "does", "work", "works", "role", "between", "proper"}}
         local_blob = " ".join(f"{d.get('title', '')} {d.get('content', '')}" for d in relevant_local).lower()
+        substantive_blob = " ".join(
+            f"{d.get('title', '')} {d.get('content', '')}"
+            for d in relevant_local
+            if len(str(d.get("content", ""))) >= 260
+        ).lower()
         covered_terms = {t for t in q_terms if t in local_blob}
+        substantive_covered = {t for t in q_terms if t in substantive_blob}
         term_coverage = (len(covered_terms) / len(q_terms)) if q_terms else 1.0
+        substantive_coverage = (len(substantive_covered) / len(q_terms)) if q_terms else 1.0
+        state["local_partial_coverage"] = bool(term_coverage < 0.85 or substantive_coverage < 0.85)
         effective_local_rel = min(max_local_score, term_coverage) if term_coverage < 0.70 else max_local_score
         jev_search_decision = jev.decide_web_search(
             query,
@@ -143,6 +201,7 @@ class RetrieverAgent:
             "search_probability": jev_search_decision.probability,
             "confidence": jev_search_decision.confidence,
             "term_coverage": round(term_coverage, 3),
+            "substantive_coverage": round(substantive_coverage, 3),
             "latency_ms": jev_search_decision.latency_ms
         }
 
@@ -195,26 +254,34 @@ class RetrieverAgent:
         for d in unique.values():
             if not d.get("user_supplied"):
                 lex_rel = max((relevance(q, d["content"], d.get("title", "")) for q in questions), default=0.0)
-                d["relevance_score"] = max(lex_rel, 0.85 * float(d.get("dense_score", 0)))
+                d["relevance_score"] = max(float(d.get("relevance_score", 0.0)), lex_rel, 0.85 * float(d.get("dense_score", 0)))
         ordered = sorted(unique.values(), key=lambda d: d["relevance_score"], reverse=True)
         has_supplied = any(d.get("user_supplied") for d in ordered)
         non_supplied = sorted([d for d in ordered if not d.get("user_supplied")], key=lambda d: d["relevance_score"], reverse=True)
         if non_supplied:
             best_rel = non_supplied[0]["relevance_score"]
-            rel_ratio = 0.56 if (len(questions) > 1 or state.get("mode") == "research") else 0.65
+            rel_ratio = 0.52 if (len(questions) > 1 or state.get("mode") == "research") else 0.58
             min_keep = rel_ratio * best_rel
             if has_supplied:
                 non_supplied = [d for d in non_supplied if d["relevance_score"] >= max(0.42, min_keep)]
             else:
-                floor = max(0.26, min_keep)
+                floor = max(0.24, min_keep)
                 non_supplied = [d for i, d in enumerate(non_supplied) if i == 0 or d["relevance_score"] >= floor]
         ordered = [d for d in ordered if d.get("user_supplied")] + non_supplied
         chosen, counts = [], {}
         has_web_nav = any(d.get("source_type") in ("web_traversal", "leetcode_problem") for d in ordered)
         effective_cap = max(top_k, 14 if has_web_nav else top_k)
+        web_types = {"web", "wikipedia", "arxiv", "news", "pubmed"}
+        local_sources = {d["source"] for d in ordered if d.get("source_type") not in web_types}
         for document in ordered:
             source = document["source"]
-            max_per_src = 6 if document.get("source_type") in ("web_traversal", "leetcode_problem") else 3
+            st = document.get("source_type", "document")
+            if st in ("web_traversal", "leetcode_problem"):
+                max_per_src = 6
+            elif document.get("from_attachment") or document.get("user_supplied") or (st not in web_types and len(local_sources) <= 2):
+                max_per_src = effective_cap
+            else:
+                max_per_src = 3
             if counts.get(source, 0) >= max_per_src:
                 continue
             chosen.append(document)

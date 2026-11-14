@@ -34,6 +34,10 @@ def latex_to_readable_math(expr: str) -> str:
     # Unwrap \text{...}, \mathrm{...}, \operatorname{...}, \mathbf{...}, \boldsymbol{...}, \mathcal{...}
     for _ in range(3):
         s = re.sub(r"\\(?:text|mathrm|operatorname|mathbf|boldsymbol|mathcal|mathit)\s*\{([^{}]*)\}", r"\1", s)
+    s = re.sub(r"\\hat\s*\{([^{}]+)\}", r"\1̂", s)
+    s = re.sub(r"\\hat\s*([A-Za-z])", r"\1̂", s)
+    s = re.sub(r"\\bar\s*\{([^{}]+)\}", r"\1̄", s)
+    s = re.sub(r"\\tilde\s*\{([^{}]+)\}", r"\1̃", s)
 
     # Convert simple superscripts ^{2}, ^{T}, ^2, ^T FIRST so nested braces inside \frac{1}{k^{2}} flatten to {k²}
     def _sup(m: re.Match) -> str:
@@ -118,16 +122,33 @@ def latex_to_readable_math(expr: str) -> str:
         (r"\cdots", "⋯"),
         (r"\alpha", "α"),
         (r"\beta", "β"),
+        (r"\Gamma", "Γ"),
         (r"\gamma", "γ"),
+        (r"\Delta", "Δ"),
         (r"\delta", "δ"),
         (r"\epsilon", "ε"),
         (r"\varepsilon", "ε"),
+        (r"\zeta", "ζ"),
+        (r"\eta", "η"),
+        (r"\Theta", "Θ"),
         (r"\theta", "θ"),
+        (r"\Lambda", "Λ"),
         (r"\lambda", "λ"),
         (r"\mu", "μ"),
+        (r"\pi", "π"),
+        (r"\rho", "ρ"),
+        (r"\Sigma", "Σ"),
         (r"\sigma", "σ"),
         (r"\tau", "τ"),
+        (r"\Phi", "Φ"),
+        (r"\varphi", "φ"),
+        (r"\phi", "φ"),
+        (r"\Psi", "Ψ"),
+        (r"\psi", "ψ"),
+        (r"\Omega", "Ω"),
+        (r"\omega", "ω"),
         (r"\ell", "ℓ"),
+        (r"\sim", " ~ "),
         (r"\{", "{"),
         (r"\}", "}"),
     ]
@@ -312,7 +333,12 @@ def format_formulas_and_diagrams(report: str, query: str, include_diagrams: bool
     text = re.sub(r"(?<!\$)\$(?!\$)([^\$\n]{1,120}?)(?<!\$)\$(?!\$)", _replace_inline_math, text)
 
     # 4. Clean any remaining bare LaTeX macros on lines where $$ was omitted or stripped
-    _BARE_MACROS = (r"\text{", r"\mathbf{", r"\frac{", r"\qquad", r"\lfloor", r"\sum", r"\mathbb{", r"\cdot", r"\times", r"\in")
+    _BARE_MACROS = (
+        r"\text{", r"\mathbf{", r"\frac{", r"\qquad", r"\lfloor", r"\sum", r"\mathbb{",
+        r"\cdot", r"\times", r"\in", r"\Delta", r"\delta", r"\phi", r"\varphi", r"\Phi",
+        r"\theta", r"\Theta", r"\sigma", r"\Sigma", r"\epsilon", r"\varepsilon", r"\alpha",
+        r"\beta", r"\gamma", r"\lambda", r"\mu", r"\sim", r"\hat", r"\approx", r"\leq", r"\geq",
+    )
     cleaned_lines: List[str] = []
     for line in text.splitlines():
         if any(macro in line for macro in _BARE_MACROS):

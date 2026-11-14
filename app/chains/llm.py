@@ -53,13 +53,13 @@ def _is_auth_error(exc: Exception) -> bool:
 
 def _groq_pool(mode: str, configured_model: str, max_tokens: int) -> tuple[list[str], int]:
     if mode in ("fast", "quick"):
-        actual_tokens = min(max(max_tokens, 650), 1400)
+        actual_tokens = min(max(max_tokens, 650), 1800)
         base_pool = ["qwen/qwen3.8-27b", "openai/gpt-oss-20b", "openai/gpt-oss-120b"]
     elif mode in ("research", "deep"):
-        actual_tokens = min(max(max_tokens, 1600), 2200)
+        actual_tokens = min(max(max_tokens, 1600), 3200)
         base_pool = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"]
     else:
-        actual_tokens = min(max(max_tokens, 1200), 2000)
+        actual_tokens = min(max(max_tokens, 1200), 2400)
         base_pool = ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "qwen/qwen3.8-27b"]
 
     raw_pool = [
@@ -173,12 +173,12 @@ class BoundedLLM:
                             cand_kwargs = dict(kwargs)
                             if "qwen" in cand_model:
                                 cand_kwargs["reasoning_effort"] = "none"
-                                cand_tokens = min(actual_tokens, 850)
+                                cand_tokens = min(actual_tokens, 1800)
                             elif "gpt-oss" in cand_model:
                                 cand_kwargs["reasoning_effort"] = "low"
-                                cand_tokens = min(actual_tokens, 2200)
+                                cand_tokens = min(actual_tokens, 3200)
                             else:
-                                cand_tokens = min(actual_tokens, 2000)
+                                cand_tokens = min(actual_tokens, 2400)
                             result = oai_client.chat.completions.create(
                                 model=cand_model,
                                 temperature=0.1,
@@ -368,12 +368,12 @@ class BoundedLLM:
                             extra_kw = {}
                             if "qwen" in cand_model:
                                 extra_kw["reasoning_effort"] = "none"
-                                cand_tokens = min(actual_tokens, 850)
+                                cand_tokens = min(actual_tokens, 1800)
                             elif "gpt-oss" in cand_model:
                                 extra_kw["reasoning_effort"] = "low"
-                                cand_tokens = min(actual_tokens, 2200)
+                                cand_tokens = min(actual_tokens, 3200)
                             else:
-                                cand_tokens = min(actual_tokens, 2000)
+                                cand_tokens = min(actual_tokens, 2400)
                             response = oai_client.chat.completions.create(
                                 model=cand_model,
                                 temperature=0.1,

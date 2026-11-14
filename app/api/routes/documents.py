@@ -53,12 +53,37 @@ async def upload_document(
 
         size_bytes = len(content)
         file_sha = hashlib.sha256(content).hexdigest()
-        docs = load_document(temp_path, privacy_mode=privacy_mode)
         clean_name = file.filename or os.path.basename(temp_path)
+        target_vs = get_user_vector_store(current_user.db_name) if current_user else getattr(request.app.state, "vector_store", None)
+        if target_vs is not None:
+            existing_chunks = [
+                d for d in target_vs.get_all_documents()
+                if d.metadata.get("sha256") == file_sha
+                or (size_bytes > 100_000 and d.metadata.get("filename") == clean_name and d.metadata.get("document_id"))
+            ]
+            if existing_chunks:
+                existing_id = str(existing_chunks[0].metadata.get("document_id") or doc_id)
+                logger.info(
+                    f"Reusing already-indexed document '{clean_name}' ({len(existing_chunks)} chunks, id={existing_id})"
+                )
+                return DocumentResponse(
+                    document_id=existing_id,
+                    filename=clean_name,
+                    format=ext.replace(".", ""),
+                    chunk_count=len(existing_chunks),
+                    size_bytes=size_bytes,
+                    qa_count=0,
+                    qa_links=[],
+                    status="processed",
+                    uploaded_at=datetime.now(timezone.utc),
+                )
+
+        docs = load_document(temp_path, privacy_mode=privacy_mode)
         for d in docs:
             d.metadata["filename"] = clean_name
             d.metadata["title"] = clean_name
             d.metadata["document_id"] = doc_id
+            d.metadata["sha256"] = file_sha
             d.metadata["format"] = ext.lstrip(".")
             if current_user:
                 d.metadata["user_id"] = current_user.id
@@ -69,6 +94,7 @@ async def upload_document(
             c.metadata["filename"] = clean_name
             c.metadata["title"] = clean_name
             c.metadata["document_id"] = doc_id
+            c.metadata["sha256"] = file_sha
             c.metadata["format"] = ext.lstrip(".")
             if current_user:
                 c.metadata["user_id"] = current_user.id

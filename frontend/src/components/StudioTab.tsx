@@ -201,22 +201,30 @@ export function StudioTab({
     controller.current = abort;
     const started = Date.now();
     const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
-    const timeoutMs = speedMode === 'fast' ? 45_000 : 240_000;
-    const timeout = setTimeout(() => abort.abort('timeout'), timeoutMs);
+    const timeoutMs = speedMode === 'fast' ? 60_000 : 240_000;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
 
     try {
-      // If user attached files directly, upload them once and cache document_id
+      // If user attached files directly, upload them once with a dedicated 180s indexing budget and cache document_id
       const uploadedAttachmentIds: string[] = [];
       if (attachedFiles.length > 0) {
+        const remainingFiles: File[] = [];
         for (const file of attachedFiles) {
-          const fileKey = `${file.name}_${file.size}_${file.lastModified}`;
-          if (uploadedDocCache.current.has(fileKey)) {
-            uploadedAttachmentIds.push(uploadedDocCache.current.get(fileKey)!);
+          const scopePrefix = currentUser?.id || 'guest';
+          const fileKey = `${scopePrefix}:${file.name}_${file.size}_${file.lastModified}`;
+          const sessionCached = (() => {
+            try { return sessionStorage.getItem(`scholar_doc_${fileKey}`); } catch { return null; }
+          })();
+          if (uploadedDocCache.current.has(fileKey) || sessionCached) {
+            const resolvedId = uploadedDocCache.current.get(fileKey) || sessionCached!;
+            uploadedDocCache.current.set(fileKey, resolvedId);
+            uploadedAttachmentIds.push(resolvedId);
             continue;
           }
           const form = new FormData();
           form.append('file', file);
           form.append('privacy_mode', String(speedMode === 'privacy'));
+          const uploadTimeout = setTimeout(() => abort.abort('upload_timeout'), 180_000);
           try {
             setStageMessage(`Parsing & indexing attachment: ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)...`);
             const upRes = await api<DocumentResponse>('/api/v1/documents/upload', {
@@ -226,18 +234,25 @@ export function StudioTab({
             });
             if (upRes?.document_id) {
               uploadedDocCache.current.set(fileKey, upRes.document_id);
+              try { sessionStorage.setItem(`scholar_doc_${fileKey}`, upRes.document_id); } catch { /* ignore */ }
               uploadedAttachmentIds.push(upRes.document_id);
             }
           } catch (uploadErr) {
-            if ((uploadErr as { status?: number })?.status === 401) {
+            if ((uploadErr as { status?: number })?.status === 401 || abort.signal.aborted) {
+              remainingFiles.push(file);
               throw uploadErr;
             }
+            remainingFiles.push(file);
             console.warn(`File upload skipped for ${file.name}:`, uploadErr);
+          } finally {
+            clearTimeout(uploadTimeout);
           }
         }
-        // Once attached & cached into library, clear file chips so future questions don't re-upload
-        setAttachedFiles([]);
+        setAttachedFiles(remainingFiles);
       }
+
+      // Start the research query timeout AFTER any attachments have finished uploading & indexing
+      timeout = setTimeout(() => abort.abort('timeout'), timeoutMs);
 
       setStreamingReport('');
       setStageMessage('Planner decomposing intent and hypothesis...');
@@ -354,16 +369,18 @@ export function StudioTab({
       if ((err as { status?: number })?.status === 401) {
         onAuthExpired?.();
       }
-      if (abort.signal.aborted && abort.signal.reason !== 'timeout') {
+      if (abort.signal.aborted && abort.signal.reason !== 'timeout' && abort.signal.reason !== 'upload_timeout') {
         setStopped(true);
       } else {
-        setError(abort.signal.reason === 'timeout'
-          ? `The request timed out after ${speedMode === 'fast' ? '45 seconds' : '4 minutes'}. Try again with a more focused question.`
+        setError(abort.signal.reason === 'upload_timeout'
+          ? 'Attachment upload and indexing timed out after 3 minutes. Please try again.'
+          : abort.signal.reason === 'timeout'
+          ? `The request timed out after ${speedMode === 'fast' ? '60 seconds' : '4 minutes'}. Try again with a more focused question.`
           : errorMessage(err));
       }
     } finally {
       clearInterval(timer);
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
       controller.current = null;
       lock.current = false;
       setLoading(false);
