@@ -208,11 +208,17 @@ class RetrieverAgent:
             for d in relevant_local
             if len(str(d.get("content", ""))) >= 260
         ).lower()
-        covered_terms = {t for t in q_terms if t in local_blob}
-        substantive_covered = {t for t in q_terms if t in substantive_blob}
+        def _term_present(term: str, blob: str) -> bool:
+            if term in blob:
+                return True
+            if len(term) >= 5 and re.search(rf"\b{re.escape(term[:4])}\w*", blob):
+                return True
+            return False
+        covered_terms = {t for t in q_terms if _term_present(t, local_blob)}
+        substantive_covered = {t for t in q_terms if _term_present(t, substantive_blob)}
         term_coverage = (len(covered_terms) / len(q_terms)) if q_terms else 1.0
         substantive_coverage = (len(substantive_covered) / len(q_terms)) if q_terms else 1.0
-        state["local_partial_coverage"] = bool(term_coverage < 0.85 or substantive_coverage < 0.85)
+        state["local_partial_coverage"] = bool(term_coverage < 0.72 or substantive_coverage < 0.72)
         effective_local_rel = min(max_local_score, term_coverage) if term_coverage < 0.70 else max_local_score
         jev_search_decision = jev.decide_web_search(
             query,
