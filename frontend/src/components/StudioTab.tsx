@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
+import { ScholarLogo } from './ScholarLogo';
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -489,7 +490,7 @@ export function StudioTab({
           <span className="orbit-ring ring-one" />
           <span className="orbit-ring ring-two" />
           <span className="orbit-ring ring-three" />
-          <span className="orbit-center"><Sparkles size={30} /></span>
+          <span className="orbit-center"><ScholarLogo size={34} showOrbit={false} /></span>
           <span className="orbit-point point-one"><Search size={16} /></span>
           <span className="orbit-point point-two"><FileText size={16} /></span>
           <span className="orbit-point point-three"><GitBranch size={16} /></span>

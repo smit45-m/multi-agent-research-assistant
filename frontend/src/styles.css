@@ -33,6 +33,15 @@
   --border-default: var(--border);
   --font-sans: var(--font);
   --font-mono: ui-monospace, 'Cascadia Code', monospace;
+  --sa-star-start: #eef2ff;
+  --sa-star-mid: #a5b4fc;
+  --sa-star-end: #7c3aed;
+  --sa-arc-indigo: #818cf8;
+  --sa-arc-violet: #c084fc;
+  --sa-arc-cyan: #38bdf8;
+  --sa-node-emerald: #34d399;
+  --sa-node-violet: #a78bfa;
+  --sa-prism-inner: #ffffff;
 }
 [data-theme='light'] {
   color-scheme: light;
@@ -52,6 +61,15 @@
   --success: #26714c;
   --warning: #815b23;
   --danger: #b53838;
+  --sa-star-start: #4338ca;
+  --sa-star-mid: #5b5bd6;
+  --sa-star-end: #7c3aed;
+  --sa-arc-indigo: #4f46e5;
+  --sa-arc-violet: #7c3aed;
+  --sa-arc-cyan: #0284c7;
+  --sa-node-emerald: #059669;
+  --sa-node-violet: #6d28d9;
+  --sa-prism-inner: #eef2ff;
 }
 * { box-sizing: border-box; }
 
@@ -272,33 +290,33 @@ button svg { pointer-events: none; }
 }
 /* Brand Banner Styling */
 .brand-banner-container {
-  padding: 0 4px;
+  padding: 0 2px;
   margin-bottom: 6px;
 }
 
 .brand-banner {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  background: linear-gradient(135deg, rgba(30, 27, 75, 0.45) 0%, rgba(15, 23, 42, 0.65) 100%);
-  border: 1px solid rgba(129, 140, 248, 0.22);
-  border-radius: 12px;
+  gap: 10px;
+  padding: 9px 10px;
+  background: linear-gradient(135deg, rgba(28, 31, 56, 0.72) 0%, rgba(18, 21, 30, 0.9) 100%);
+  border: 1px solid rgba(165, 180, 252, 0.22);
+  border-radius: 13px;
   text-decoration: none;
-  transition: all 0.22s ease-in-out;
-  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.08);
+  transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 4px 16px rgba(15, 23, 42, 0.35);
 }
 
 [data-theme='light'] .brand-banner {
-  background: linear-gradient(135deg, rgba(238, 242, 255, 0.85) 0%, rgba(245, 243, 255, 0.95) 100%);
-  border-color: rgba(129, 140, 248, 0.35);
-  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.06);
+  background: linear-gradient(135deg, rgba(238, 242, 255, 0.92) 0%, rgba(248, 250, 252, 0.98) 100%);
+  border-color: rgba(80, 93, 180, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 4px 14px rgba(80, 93, 180, 0.08);
 }
 
 .brand-banner:hover {
-  border-color: rgba(129, 140, 248, 0.55);
+  border-color: rgba(165, 180, 252, 0.5);
   transform: translateY(-1px);
-  box-shadow: 0 4px 18px rgba(99, 102, 241, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 6px 22px rgba(99, 102, 241, 0.22);
   text-decoration: none;
 }
 
@@ -310,41 +328,49 @@ button svg { pointer-events: none; }
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  background: radial-gradient(circle at center, rgba(129, 140, 248, 0.25) 0%, rgba(99, 102, 241, 0.1) 70%);
-  border: 1px solid rgba(129, 140, 248, 0.32);
-  box-shadow: 0 0 12px rgba(129, 140, 248, 0.25);
+  background: radial-gradient(circle at 28% 24%, rgba(129, 140, 248, 0.26) 0%, rgba(124, 58, 237, 0.14) 50%, rgba(15, 18, 32, 0.92) 100%);
+  border: 1px solid rgba(165, 180, 252, 0.34);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 0 16px rgba(129, 140, 248, 0.22);
   flex-shrink: 0;
-  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+[data-theme='light'] .brand-icon-wrapper {
+  background: radial-gradient(circle at 28% 24%, rgba(99, 102, 241, 0.16) 0%, rgba(124, 58, 237, 0.08) 55%, rgba(255, 255, 255, 0.98) 100%);
+  border-color: rgba(79, 70, 229, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 2px 10px rgba(79, 70, 229, 0.14);
 }
 
 .brand-banner:hover .brand-icon-wrapper {
-  transform: rotate(20deg) scale(1.08);
-  box-shadow: 0 0 18px rgba(129, 140, 248, 0.45);
+  transform: scale(1.05);
+  border-color: rgba(192, 132, 252, 0.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 0 22px rgba(129, 140, 248, 0.38);
 }
 
 .brand-icon-svg {
-  width: 23px;
-  height: 23px;
+  width: 27px;
+  height: 27px;
   display: block;
 }
 
-.brand-icon-core {
-  stroke: #818cf8;
-  stroke-width: 2;
-  fill: #a855f7;
-  fill-opacity: 0.35;
+.sa-logo-orbit {
+  transform-origin: 20px 20px;
+  transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.brand-icon-teeth {
-  stroke: #818cf8;
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  transition: stroke 0.2s ease;
+.sa-logo-core {
+  transform-origin: 20px 20px;
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.brand-banner:hover .brand-icon-teeth {
-  stroke: #a78bfa;
+.brand-banner:hover .sa-logo-orbit,
+.nav-brand:hover .sa-logo-orbit {
+  transform: rotate(38deg);
+}
+
+.brand-banner:hover .sa-logo-core,
+.nav-brand:hover .sa-logo-core {
+  transform: scale(1.07);
 }
 
 .brand-text-block {
@@ -357,32 +383,48 @@ button svg { pointer-events: none; }
 .brand-primary-row {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
 }
 
 .brand-name {
   font-family: var(--heading);
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.3px;
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: -0.35px;
   color: var(--text);
   line-height: 1.2;
+  white-space: nowrap;
+}
+
+.brand-name-accent {
+  color: #a5b4fc;
+}
+
+[data-theme='light'] .brand-name-accent {
+  color: #4f46e5;
 }
 
 .brand-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 8.5px;
+  gap: 3px;
+  font-size: 8px;
   font-weight: 700;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.55px;
   text-transform: uppercase;
   color: #34d399;
-  background: rgba(16, 185, 129, 0.15);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  padding: 1px 6px;
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.32);
+  padding: 1px 5px;
   border-radius: 9999px;
   line-height: 1.3;
+  flex-shrink: 0;
+}
+
+[data-theme='light'] .brand-badge {
+  color: #047857;
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(5, 150, 105, 0.35);
 }
 
 .brand-badge::before {
@@ -396,12 +438,13 @@ button svg { pointer-events: none; }
 
 .brand-subtext {
   font-family: var(--font);
-  font-size: 8.5px;
+  font-size: 8px;
   font-weight: 600;
-  letter-spacing: 1.2px;
+  letter-spacing: 0.7px;
   text-transform: uppercase;
   color: var(--muted);
   line-height: 1.3;
+  white-space: nowrap;
 }
 .new-research { display: flex; align-items: center; gap: 9px; width: 100%; background: var(--panel-strong); border: 1px solid var(--border); border-radius: 8px; margin: 18px 0 14px; padding: 11px 13px; font-size: 12px; font-weight: 600; }
 .new-research:hover { background: var(--hover); border-color: var(--muted); }
