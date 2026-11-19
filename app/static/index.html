@@ -36,20 +36,27 @@
         height: 0 !important;
         background: transparent !important;
       }
-      /* Sleek styling for Mathematical Formula Cards, Visual Architecture Diagrams & Markdown Tables */
+      /* Theme-aware styling for Mathematical Formula Cards, Visual Architecture Diagrams & Markdown Tables */
       .prose pre {
-        background: linear-gradient(145deg, rgba(17, 24, 39, 0.94), rgba(30, 27, 75, 0.78)) !important;
-        border: 1px solid rgba(129, 140, 248, 0.35) !important;
-        border-left: 4px solid #818cf8 !important;
+        background: linear-gradient(145deg, rgba(15, 20, 36, 0.94), rgba(28, 25, 68, 0.78)) !important;
+        border: 1px solid rgba(129, 140, 248, 0.3) !important;
+        border-left: 3px solid #818cf8 !important;
         border-radius: 12px !important;
         padding: 16px 20px !important;
         margin: 14px 0 !important;
         font-family: 'JetBrains Mono', monospace !important;
-        font-size: 0.88rem !important;
-        line-height: 1.55 !important;
+        font-size: 0.87rem !important;
+        line-height: 1.6 !important;
         color: #e0e7ff !important;
         overflow-x: auto !important;
-        box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.45) !important;
+        box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.38) !important;
+      }
+      [data-theme='light'] .prose pre {
+        background: linear-gradient(145deg, #f5f7ff, #eef2ff) !important;
+        border: 1px solid rgba(79, 70, 229, 0.22) !important;
+        border-left: 3px solid #4f46e5 !important;
+        color: #1e1b4b !important;
+        box-shadow: 0 6px 18px -6px rgba(79, 70, 229, 0.12) !important;
       }
       .prose code {
         font-family: 'JetBrains Mono', monospace !important;
@@ -57,6 +64,10 @@
         background: rgba(99, 102, 241, 0.14) !important;
         padding: 2px 6px !important;
         border-radius: 5px !important;
+      }
+      [data-theme='light'] .prose code {
+        color: #3730a3 !important;
+        background: rgba(79, 70, 229, 0.1) !important;
       }
       .prose pre code {
         background: transparent !important;
@@ -72,17 +83,17 @@
         margin: 18px 0 !important;
         overflow-wrap: normal !important;
         word-break: normal !important;
-        border: 1px solid rgba(129, 140, 248, 0.25) !important;
+        border: 1px solid rgba(129, 140, 248, 0.22) !important;
         border-radius: 10px !important;
       }
       .prose thead th,
       .prose th {
-        background: rgba(30, 34, 48, 0.92) !important;
+        background: rgba(24, 30, 50, 0.92) !important;
         color: #e0e7ff !important;
         font-weight: 600 !important;
         font-size: 0.84rem !important;
         padding: 11px 14px !important;
-        border: 1px solid rgba(129, 140, 248, 0.22) !important;
+        border: 1px solid rgba(129, 140, 248, 0.2) !important;
         white-space: normal !important;
         overflow-wrap: normal !important;
         word-break: normal !important;
@@ -90,10 +101,16 @@
         vertical-align: top !important;
         min-width: 110px !important;
       }
+      [data-theme='light'] .prose thead th,
+      [data-theme='light'] .prose th {
+        background: #eef2ff !important;
+        color: #1e293b !important;
+        border: 1px solid rgba(79, 70, 229, 0.18) !important;
+      }
       .prose tbody td,
       .prose td {
         padding: 11px 14px !important;
-        border: 1px solid rgba(129, 140, 248, 0.16) !important;
+        border: 1px solid rgba(129, 140, 248, 0.14) !important;
         vertical-align: top !important;
         overflow-wrap: normal !important;
         word-break: normal !important;
@@ -102,8 +119,15 @@
         max-width: 340px !important;
         line-height: 1.6 !important;
       }
+      [data-theme='light'] .prose tbody td,
+      [data-theme='light'] .prose td {
+        border: 1px solid rgba(15, 23, 42, 0.1) !important;
+      }
       .prose tbody tr:nth-child(even) td {
-        background: rgba(255, 255, 255, 0.02) !important;
+        background: rgba(255, 255, 255, 0.025) !important;
+      }
+      [data-theme='light'] .prose tbody tr:nth-child(even) td {
+        background: rgba(79, 70, 229, 0.03) !important;
       }
       .prose th:first-child,
       .prose td:first-child {
@@ -126,8 +150,23 @@
         word-break: break-word !important;
       }
     </style>
-    <script type="module" crossorigin src="/assets/index-qbBimNVo.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-CSNYZcwi.css">
+    <script>
+      (function() {
+        try {
+          var params = new URLSearchParams(window.location.search);
+          var qsT = params.get('theme');
+          var t = (qsT === 'light' || qsT === 'dark') ? qsT : (localStorage.getItem('research-theme') === 'light' ? 'light' : 'dark');
+          document.documentElement.dataset.theme = t;
+          var validP = ['aurora', 'emerald', 'amber', 'rose', 'ocean'];
+          var qsP = params.get('palette');
+          var savedP = localStorage.getItem('research-palette');
+          var p = validP.indexOf(qsP) !== -1 ? qsP : (validP.indexOf(savedP) !== -1 ? savedP : 'aurora');
+          document.documentElement.dataset.palette = p;
+        } catch (e) {}
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-B-6ac62h.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DFrqPITW.css">
   </head>
   <body>
     <div id="root"></div>

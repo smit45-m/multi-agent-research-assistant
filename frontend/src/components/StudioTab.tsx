@@ -482,7 +482,7 @@ export function StudioTab({
 
   return (
     <div className="studio-page">
-      <section className="studio-heading">
+      <section className="studio-heading" data-reveal>
         <div className="eyebrow"><span className="eyebrow-line" /> YOUR CURIOSITY, AMPLIFIED</div>
         <h1>Big questions.<br /><span>Clearer answers.</span></h1>
         <p>A team of AI agents to explore, connect, and make sense of what matters.<br className="desktop-break" /> Start with a question. Leave with a research report.</p>
@@ -500,7 +500,7 @@ export function StudioTab({
 
       <div className="studio-grid">
         <div className="studio-main">
-          <div className={`studio-workspace-bar ${currentUser ? 'private' : 'guest'}`}>
+          <div className={`studio-workspace-bar ${currentUser ? 'private' : 'guest'}`} data-reveal data-reveal-delay="1">
             {currentUser ? (
               <>
                 <div className="studio-workspace-info">
@@ -541,7 +541,7 @@ export function StudioTab({
             )}
           </div>
 
-          <section className="composer panel" aria-labelledby="question-label">
+          <section className="composer panel" aria-labelledby="question-label" data-reveal data-reveal-delay="2">
             <div className="composer-header">
               <label id="question-label" htmlFor="research-question">
                 <Sparkles size={16} /> What would you like to understand?
@@ -887,12 +887,12 @@ export function StudioTab({
           )}
 
           {/* Research Team Grid */}
-          <section className="team-panel panel" aria-labelledby="team-title">
+          <section className="team-panel panel" aria-labelledby="team-title" data-reveal data-reveal-delay="2">
             <div className="section-header">
               <h2 id="team-title"><span className="team-dot" /> Your research team</h2>
               <span>Six coordinated agents. One clear outcome.</span>
             </div>
-            <div className="agent-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
+            <div className="agent-grid">
               {agents.map(({ key, name, role, icon: Icon, color }, index) => (
                 <div key={key} className="agent-step">
                   <div className="agent-step-top">
@@ -912,7 +912,7 @@ export function StudioTab({
           </section>
 
           {!result && !loading && (
-            <section className="inspiration" aria-labelledby="inspiration-title">
+            <section className="inspiration" aria-labelledby="inspiration-title" data-reveal data-reveal-delay="3">
               <div className="section-header">
                 <h2 id="inspiration-title">A little inspiration</h2>
                 <span>Pick a starting point <ArrowDownToLine size={12} /></span>
@@ -940,7 +940,7 @@ export function StudioTab({
           )}
         </div>
 
-        <aside className="research-settings" aria-label="Research settings">
+        <aside className="research-settings" aria-label="Research settings" data-reveal data-reveal-delay="2">
           <section className="settings-panel panel">
             <div className="settings-title">
               <SlidersHorizontal size={16} />

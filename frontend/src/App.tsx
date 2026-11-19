@@ -23,6 +23,10 @@ import { ConcurrencyTab } from "./components/ConcurrencyTab";
 import { MemoryTab } from "./components/MemoryTab";
 import { AuthModal } from "./components/AuthModal";
 import { ScholarLogo } from "./components/ScholarLogo";
+import { AmbientCanvas } from "./components/AmbientCanvas";
+import { ThemePalettePicker } from "./components/ThemePalettePicker";
+import { isColorPalette, type ColorPalette } from "./palettes";
+import { useScrollReveal } from "./hooks/useScrollReveal";
 import {
   api,
   clearAuthToken,
@@ -71,11 +75,23 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("studio");
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     try {
+      const qs = new URLSearchParams(window.location.search).get("theme");
+      if (qs === "light" || qs === "dark") return qs;
       return localStorage.getItem("research-theme") === "light"
         ? "light"
         : "dark";
     } catch {
       return "dark";
+    }
+  });
+  const [palette, setPalette] = useState<ColorPalette>(() => {
+    try {
+      const qs = new URLSearchParams(window.location.search).get("palette");
+      if (isColorPalette(qs)) return qs;
+      const saved = localStorage.getItem("research-palette");
+      return isColorPalette(saved) ? saved : "aurora";
+    } catch {
+      return "aurora";
     }
   });
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -177,6 +193,15 @@ export default function App() {
       /* Storage is optional. */
     }
   }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.dataset.palette = palette;
+    try {
+      localStorage.setItem("research-palette", palette);
+    } catch {
+      /* Storage is optional. */
+    }
+  }, [palette]);
 
   const checkHealth = useCallback(async () => {
     setConnection("checking");
@@ -314,8 +339,11 @@ export default function App() {
     [],
   );
 
+  useScrollReveal(`${activeTab}-${resetKey}-${result ? result.task_id : "idle"}`);
+
   return (
     <div className="app-shell">
+      <AmbientCanvas theme={theme} palette={palette} />
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
@@ -486,6 +514,7 @@ export default function App() {
                     : "Backend offline"}
             </button>
             <span className="topbar-divider" />
+            <ThemePalettePicker palette={palette} onSelect={setPalette} />
             <button
               className="icon-button"
               aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
@@ -526,7 +555,7 @@ export default function App() {
           </div>
         </header>
         <main id="main-content" className="main-content" tabIndex={-1}>
-          <div hidden={activeTab !== "studio"}>
+          <div hidden={activeTab !== "studio"} className={activeTab === "studio" ? "tab-stage" : undefined}>
             <StudioTab
               key={`${currentUser?.id || "guest"}-${resetKey}`}
               onShowToast={notify}
@@ -545,37 +574,47 @@ export default function App() {
             />
           </div>
           {activeTab === "knowledge" && (
-            <KnowledgeTab
-              onShowToast={notify}
-              currentUser={currentUser}
-              onOpenChat={(chatId) => void openChatById(chatId)}
-              onOpenAuth={() => setAuthModalOpen(true)}
-              onWorkspaceChange={() => setMemoryRefreshSignal((n) => n + 1)}
-            />
+            <div className="tab-stage">
+              <KnowledgeTab
+                onShowToast={notify}
+                currentUser={currentUser}
+                onOpenChat={(chatId) => void openChatById(chatId)}
+                onOpenAuth={() => setAuthModalOpen(true)}
+                onWorkspaceChange={() => setMemoryRefreshSignal((n) => n + 1)}
+              />
+            </div>
           )}
           {activeTab === "memory" && (
-            <MemoryTab
-              currentUser={currentUser}
-              onShowToast={notify}
-              onOpenAuth={() => setAuthModalOpen(true)}
-              onOpenTurn={openTurnInStudio}
-              onContinueThread={(tid) => {
-                setActiveThreadId(tid);
-                setResult(null);
-                setResetKey((k) => k + 1);
-                navigate("studio");
-              }}
-              onAuthRevokedAll={resetUserSessionState}
-              refreshSignal={memoryRefreshSignal}
-            />
+            <div className="tab-stage">
+              <MemoryTab
+                currentUser={currentUser}
+                onShowToast={notify}
+                onOpenAuth={() => setAuthModalOpen(true)}
+                onOpenTurn={openTurnInStudio}
+                onContinueThread={(tid) => {
+                  setActiveThreadId(tid);
+                  setResult(null);
+                  setResetKey((k) => k + 1);
+                  navigate("studio");
+                }}
+                onAuthRevokedAll={resetUserSessionState}
+                refreshSignal={memoryRefreshSignal}
+              />
+            </div>
           )}
-          {activeTab === "benchmarks" && <BenchmarksTab onShowToast={notify} />}
+          {activeTab === "benchmarks" && (
+            <div className="tab-stage">
+              <BenchmarksTab onShowToast={notify} />
+            </div>
+          )}
           {activeTab === "concurrency" && (
-            <ConcurrencyTab
-              health={health}
-              connection={connection}
-              onRefresh={checkHealth}
-            />
+            <div className="tab-stage">
+              <ConcurrencyTab
+                health={health}
+                connection={connection}
+                onRefresh={checkHealth}
+              />
+            </div>
           )}
           <footer className="page-footer">
             <span>Built for curious minds.</span>
